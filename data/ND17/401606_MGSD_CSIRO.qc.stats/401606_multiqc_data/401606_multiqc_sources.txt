@@ -1,0 +1,5 @@
+Module	Section	Sample Name	Source
+FastQC	all_sections	401606_HL7J5DSX3-1_merged	/datasets/work/oa-amd/work/amd/Metagenome_QC_reads/401606_HL7J5DSX3-1_merged_fastqc.zip
+FastQC	all_sections	401606_HL7J5DSX3-1_R1p	/datasets/work/oa-amd/work/amd/Metagenome_QC_reads/401606_HL7J5DSX3-1_R1p_fastqc.zip
+FastQC	all_sections	401606_HL7J5DSX3-1_R1R2u	/datasets/work/oa-amd/work/amd/Metagenome_QC_reads/401606_HL7J5DSX3-1_R1R2u_fastqc.zip
+FastQC	all_sections	401606_HL7J5DSX3-1_R2p	/datasets/work/oa-amd/work/amd/Metagenome_QC_reads/401606_HL7J5DSX3-1_R2p_fastqc.zip

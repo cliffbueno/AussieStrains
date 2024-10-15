@@ -1,0 +1,5 @@
+Sample	FastQC_mqc-generalstats-fastqc-percent_duplicates	FastQC_mqc-generalstats-fastqc-percent_gc	FastQC_mqc-generalstats-fastqc-avg_sequence_length	FastQC_mqc-generalstats-fastqc-percent_fails	FastQC_mqc-generalstats-fastqc-total_sequences
+9430_H32M7BCXX-2_R1R2u	0.7638588462686897	62.0	149.28763519687215	9.090909090909092	470610.0
+9430_H32M7BCXX-2_R1p	1.2699944410463644	62.0	149.63379263502603	0.0	15148431.0
+9430_H32M7BCXX-2_R2p	1.142718863828648	62.0	144.32004938333216	0.0	15148431.0
+9430_H32M7BCXX-2_merged	1.7908598106585316	61.0	214.32416864502432	0.0	505891.0

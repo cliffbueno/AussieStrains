@@ -1,0 +1,5 @@
+Sample	FastQC_mqc-generalstats-fastqc-percent_duplicates	FastQC_mqc-generalstats-fastqc-percent_gc	FastQC_mqc-generalstats-fastqc-avg_sequence_length	FastQC_mqc-generalstats-fastqc-percent_fails	FastQC_mqc-generalstats-fastqc-total_sequences
+401586_HL7J5DSX3-1_R1R2u	0.0	69.0	150.912	36.36363636363637	125.0
+401586_HL7J5DSX3-1_R1p	10.79551485012017	64.0	150.66607172581286	9.090909090909092	30464653.0
+401586_HL7J5DSX3-1_R2p	10.641873555286296	64.0	150.63123079064778	9.090909090909092	30464653.0
+401586_HL7J5DSX3-1_merged	10.409954618718785	64.0	228.85464316132433	18.181818181818183	1479380.0

@@ -1,0 +1,7 @@
+#File	8268-H9EV8ADXX-2_2_PE_350bp_BASE_UNSW_H9EV8ADXX_ACAGTG_L002_R1.fastq.gz	8268-H9EV8ADXX-2_2_PE_350bp_BASE_UNSW_H9EV8ADXX_ACAGTG_L002_R2.fastq.gz
+#Reads	84712208
+#Mapped	71845
+#References	2
+#Name	Length	Scaffolds	Bases	Coverage	Reads	RPKM
+adapters	8577	158	10848595	1264.8473	71845	116590.8862
+phix174_ill.ref						

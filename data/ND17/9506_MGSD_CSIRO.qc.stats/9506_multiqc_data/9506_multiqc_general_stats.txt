@@ -1,0 +1,5 @@
+Sample	FastQC_mqc-generalstats-fastqc-percent_duplicates	FastQC_mqc-generalstats-fastqc-percent_gc	FastQC_mqc-generalstats-fastqc-avg_sequence_length	FastQC_mqc-generalstats-fastqc-percent_fails	FastQC_mqc-generalstats-fastqc-total_sequences
+9506_HCWFWBCXX-1_R1R2u	0.0	0	0	0.0	0
+9506_HCWFWBCXX-1_R1p	0.322555873499482	65.0	149.98915918927102	9.090909090909092	19787081.0
+9506_HCWFWBCXX-1_R2p	0.28879988843762305	65.0	149.97294674237196	9.090909090909092	19787081.0
+9506_HCWFWBCXX-1_merged	0.388063262447659	65.0	228.73956873015388	9.090909090909092	557099.0
