@@ -279,6 +279,8 @@ ggplot(d_sub, aes(x = Dataset, y = AI)) +
   theme_ggside_void()
 dev.off()
 
+#write.csv(d_sub, "data/metadata104.csv")
+
 sort(as.numeric(d_sub$sampleID))
 
 # Go to BASE and select these 104 sampleIDs
