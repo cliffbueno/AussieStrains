@@ -178,6 +178,31 @@ ls > fasta_batch1.txt
 # Redownload, unzip, and move those fastas
 screen find ./Downloads2 -type f -name "*.fna" -exec mv {} ./Ref_genomes/ \;
 
+# After Mads meeting, need to add Streptosporangiaceae genomes
+conda activate ncbi_datasets
+cd /scratch/alpine/clbd1748/Australia
+cd NCBI_download
+dos2unix ncbi_strep.txt
+sed -i 's/"//g' ncbi_strep.txt
+cd ../
+mkdir StrepGenomes
+cd StrepGenomes
+screen ../NCBI_download/download_ncbi_strep.sh
+ls -l . | egrep -c '^-'
+screen bash -c 'for f in *.zip; do unzip "$f" -d "${f%.zip}"; done'
+mkdir StrepFastas
+find ./ -type f -name "*.fna" -exec mv {} ./StrepFastas/ \;
+cd ../../
+mkdir Ref_genomes_strep
+cp Ref_genomes/*.fna.gz ./Ref_genomes_strep/
+gzip StrepGenomes/StrepFastas/*.fna
+cp StrepGenomes/StrepFastas/*.fna.gz ./Ref_genomes_strep/
+conda deactivate
+conda activate sylph_env
+sylph sketch -g ./Ref_genomes_strep/*.fna.gz -o ./Sylph/ref_genomes_strep_sketch -t 8
+sylph profile ./Sylph/ref_genomes_strep_sketch.syldb ./Sylph/reads_sketch/*.sylsp -t 16 -m 95 > ./Sylph/sylph_profile_strep_ani95.tsv
+
+
 
 
 ###### Sylph #########

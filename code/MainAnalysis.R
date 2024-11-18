@@ -735,6 +735,27 @@ sum(ncbi_accessions$ncbi_genbank_assembly_accession == "NA") # No NA string.
 length(unique(ncbi_accessions$ncbi_genbank_assembly_accession)) # 21471
 #write.table(ncbi_accessions, "data/ncbi_accessions.txt", sep = "\t", row.names = F, col.names = F)
 
+# Met with Mads Albertson and apparently Acidothermus could actually Streptosporangiaceae
+# So, download Streptosporangiaceae accessions and rerun Sylph
+gtdb_strep <- bacGT %>%
+  mutate(gtdb_taxonomy = gsub("d__", "", gtdb_taxonomy)) %>%
+  mutate(gtdb_taxonomy = gsub("p__", "", gtdb_taxonomy)) %>%
+  mutate(gtdb_taxonomy = gsub("c__", "", gtdb_taxonomy)) %>%
+  mutate(gtdb_taxonomy = gsub("o__", "", gtdb_taxonomy)) %>%
+  mutate(gtdb_taxonomy = gsub("f__", "", gtdb_taxonomy)) %>%
+  mutate(gtdb_taxonomy = gsub("g__", "", gtdb_taxonomy)) %>%
+  mutate(gtdb_taxonomy = gsub("s__", "", gtdb_taxonomy)) %>%
+  separate(gtdb_taxonomy, 
+           into = c("Domain", "Phylum", "Class", "Order", "Family", "Genus", "Species"),
+           sep = ";") %>%
+  filter(Family == "Streptosporangiaceae")
+ncbi_strep <- gtdb_strep %>%
+  dplyr::select(ncbi_genbank_assembly_accession)
+sum(is.na(ncbi_strep$ncbi_genbank_assembly_accession)) # No NA.
+sum(ncbi_strep$ncbi_genbank_assembly_accession == "NA") # No NA string.
+length(unique(ncbi_strep$ncbi_genbank_assembly_accession)) # 573
+#write.table(ncbi_strep, "data/ncbi_strep.txt", sep = "\t", row.names = F, col.names = F)
+
 
 
 #### _NCBI Download ####
@@ -802,6 +823,7 @@ genus_info <- genus_info %>%
                                                      n_GTDB_genomes - 1,
                                                      n_GTDB_genomes))))
 #writexl::write_xlsx(genus_info, "data/genus_info_75point1.xlsx", format_headers = F)
+# All 573 Streptosporangiaceae genomes downloaded fine
 
 
 
@@ -837,7 +859,7 @@ genome_names_dRep <- genome_names %>%
   filter(Accession %in% ncbi_accessions_dRep$ncbi_genbank_assembly_accession)
 #write.csv(genome_names_dRep$V1, "data/dRep_filenames.csv", row.names = F)
 #write.table(genome_names_dRep$V1, "data/dRep_filenames.txt", sep = "\t", row.names = F, col.names = F)
-# Don't forget dos2unix!!
+# Don't forget dos2unix and to remove quotations!!
 # Ran the copy script, looks like 1 is missing
 dRep_moved <- read.delim("data/dRep_moved.txt", header = F)
 missing <- genome_names_dRep %>%
@@ -863,6 +885,9 @@ gtdb_focal_final <- readRDS("data/gtdb_focal_final.rds")
 gtdb_ncbi_map <- gtdb_focal_final %>%
   dplyr::select(Domain, Phylum, Class, Order, Family, Genus, Species, 
                 ncbi_genbank_assembly_accession)
+gtdb_ncbi_map_strep <- rbind(gtdb_focal_final, gtdb_strep) %>%
+  dplyr::select(Domain, Phylum, Class, Order, Family, Genus, Species, 
+                ncbi_genbank_assembly_accession)
 meta_key <- meta %>%
   dplyr::select(sampleID, vegetation_type, AI) %>%
   mutate(SampleID = as.character(sampleID)) %>%
@@ -874,6 +899,7 @@ meta_AI <- meta_key %>%
 
 #### __95% ANI ####
 sylph_profile <- read.delim("data/sylph_profile_ani95.tsv")
+nrow(sylph_profile) # 714 total rows
 length(unique(sylph_profile$Contig_name)) # 223 uniques
 length(unique(sylph_profile$Genome_file)) # 223 uniques
 length(unique(sylph_profile$Sample_file)) # 101 uniques - so 3 samples with none of these at 95% ANI.
@@ -888,6 +914,7 @@ sylph_profile <- read.delim("data/sylph_profile_ani95.tsv") %>%
   dplyr::select(SampleID, Accession, Domain, Phylum, Class, Order, Family, Genus, Species,
                 everything())
 length(unique(sylph_profile$Genus)) # 15 genera
+unique(sylph_profile$Genus)
 sylph_profile_samples <- sylph_profile %>%
   group_by(SampleID) %>%
   summarise(n_Genomes = n()) %>%
@@ -911,12 +938,12 @@ sylph_profile_genera_samples <- sylph_profile %>%
   group_by(Genus) %>%
   summarise(n_Samples_Sylph95 = n())
 # Add this info
-genus_info <- read_xlsx("data/genus_info_75point1.xlsx") %>%
+genus_info_toPlot <- read_xlsx("data/genus_info_75point1.xlsx") %>%
   left_join(., sylph_profile_genera, by = "Genus") %>%
   left_join(., sylph_profile_genera_samples, by = "Genus") %>%
   replace_na(list(n_Genomes_Sylph95 = 0,
                   n_Samples_Sylph95 = 0))
-ggplot(genus_info, aes(n_Genomes_downloaded, n_Genomes_Sylph95)) +
+ggplot(genus_info_toPlot, aes(n_Genomes_downloaded, n_Genomes_Sylph95)) +
   geom_point(size = 2, pch = 16, alpha = 0.8) +
   theme_bw()
 
@@ -1228,6 +1255,69 @@ sylph_compare_file <- sylph_compare %>%
                 n_Genomes_Sylph95, n_Genomes_Sylph95_dRep) %>%
   arrange(desc(n_Samples_Sylph95))
 #writexl::write_xlsx(sylph_compare_file, "data/sylph_compare_drep.xlsx", format_headers = F)
+
+
+
+#### __95% ANI w Strep ####
+# Sylph output with the Streptosporangiaceae genomes included
+sylph_profile <- read.delim("data/sylph_profile_strep_ani95.tsv")
+nrow(sylph_profile) # 771 total rows
+length(unique(sylph_profile$Contig_name)) # 245 uniques
+length(unique(sylph_profile$Genome_file)) # 245 uniques
+length(unique(sylph_profile$Sample_file)) # 101 uniques - so 3 samples with none of these at 95% ANI.
+
+sylph_profile <- read.delim("data/sylph_profile_strep_ani95.tsv") %>%
+  mutate(SampleID = gsub("/scratch/alpine/clbd1748/Australia/QC_reads/", "", Sample_file)) %>%
+  separate(SampleID, into = c("SampleID", "Junk1", "Junk2"), sep = "_") %>%
+  dplyr::select(-Junk1, -Junk2) %>%
+  mutate(Accession = substr(Genome_file, start = 21, stop = 35)) %>%
+  left_join(., gtdb_ncbi_map_strep, by = c("Accession" = "ncbi_genbank_assembly_accession")) %>%
+  dplyr::select(-Sample_file, -Genome_file) %>%
+  dplyr::select(SampleID, Accession, Domain, Phylum, Class, Order, Family, Genus, Species,
+                everything())
+length(unique(sylph_profile$Genus)) # 26 genera
+unique(sylph_profile$Genus)
+length(unique(sylph_profile$Family)) # 14 families
+sylph_profile_strep <- sylph_profile %>%
+  filter(Family == "Streptosporangiaceae")
+nrow(sylph_profile_strep) # 57 total rows
+length(unique(sylph_profile_strep$Accession)) # 22 unique Streptosporangiaceae genomes found
+length(unique(sylph_profile_strep$SampleID)) # 38 unique samples
+sylph_profile_samples <- sylph_profile_strep %>%
+  group_by(SampleID) %>%
+  summarise(n_Genomes = n()) %>%
+  left_join(., meta_key, by = "SampleID")
+ggplot(sylph_profile_samples, aes(AI, n_Genomes)) +
+  geom_point(size = 2, pch = 16, alpha = 0.8) +
+  theme_bw()
+sylph_profile_genomes <- sylph_profile_strep %>%
+  group_by(Genus, Accession) %>%
+  summarise(n_Samples = n())
+# The most samples per individual accession is 9 for a Trebonia and a Palsa-504
+sylph_profile_genera <- sylph_profile_strep %>%
+  group_by(Genus, Accession) %>%
+  summarise(n_Samples = n()) %>%
+  ungroup() %>%
+  group_by(Genus) %>%
+  summarise(n_Genomes_Sylph95 = n())
+# There are 11 different Streptosporangiaceae genera represented!
+sylph_profile_genera_samples <- sylph_profile_strep %>%
+  group_by(Genus, SampleID) %>%
+  summarise(n_Samples = n()) %>%
+  ungroup() %>%
+  group_by(Genus) %>%
+  summarise(n_Samples_Sylph95 = n())
+# Palsa-504 in 14 samples, Trebonia in 11 samples
+# However, neither of these nor any Streptosporangiaceae were in the abund ubiq genera
+# Add this info
+genus_info <- read_xlsx("data/genus_info_75point1.xlsx") %>%
+  left_join(., sylph_profile_genera, by = "Genus") %>%
+  left_join(., sylph_profile_genera_samples, by = "Genus") %>%
+  replace_na(list(n_Genomes_Sylph95 = 0,
+                  n_Samples_Sylph95 = 0))
+ggplot(genus_info, aes(n_Genomes_downloaded, n_Genomes_Sylph95)) +
+  geom_point(size = 2, pch = 16, alpha = 0.8) +
+  theme_bw()
 
 
 
