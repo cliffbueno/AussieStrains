@@ -18,6 +18,7 @@ library(RColorBrewer)
 library(broom)
 library(readxl)
 library(pheatmap)
+library(writexl)
 
 # Functions
 `%notin%` <- Negate(`%in%`)
@@ -601,6 +602,80 @@ dev.off()
 top4_otu <- tax_sum_otu %>%
   filter(grepl("otu_24062|otu_187776|otu_97930|otu_41087", rownames(.)))
 # 401570, 401586, 401590
+
+#### _Strepto ####
+tax_sum_fam <- summarize_taxonomy(input = input_filt_rare, 
+                                  level = 5, 
+                                  report_higher_tax = F,
+                                  relative = T)
+fam_abund <- data.frame("Family" = rownames(tax_sum_fam),
+                        "MeanPercRelAbund" = rowMeans(tax_sum_fam)*100) %>%
+  arrange(desc(MeanPercRelAbund))
+# Streptosporangiaceae is the 68th most abundant family across the dataset
+# Mean % rel abund is 0.08788534 (cutoff was 0.1%)
+fam_prev <- data.frame("Family" = rownames(tax_sum_fam),
+                       "Absent" = rowSums(tax_sum_fam==0)) %>%
+  mutate(Present_n = ncol(tax_sum_fam) - Absent) %>%
+  mutate(Present_Perc = Present_n/ncol(tax_sum_fam)*100) %>%
+  arrange(desc(Present_Perc))
+# Streptosporangiaceae is the 37th most prevalent family. Present in 79/104 or 76% (cutoff was 75%)
+# Make OTU heatmap as for other genera of interest
+
+# Check Streptosporangiaceae OTUs
+tax_sum_otu <- summarize_taxonomy(input = input_filt_rare, 
+                                  level = 8, 
+                                  report_higher_tax = T,
+                                  relative = T)
+otu_abund <- data.frame("OTU" = rownames(tax_sum_otu),
+                        "MeanPercRelAbund" = rowSums(tax_sum_otu)) %>%
+  arrange(desc(MeanPercRelAbund))
+otu_prev <- data.frame("OTU" = rownames(tax_sum_otu),
+                       "Absent" = rowSums(tax_sum_otu==0)) %>%
+  mutate(Present_n = ncol(tax_sum_otu) - Absent) %>%
+  mutate(Present_Perc = Present_n/ncol(tax_sum_otu)*100) %>%
+  arrange(desc(Present_Perc))
+otu_prev_abund <- otu_abund %>%
+  left_join(., otu_prev, by = "OTU") %>%
+  separate(OTU, into = c("Domain", "Phylum", "Class", "Order", "Family", "Genus",
+                         "Species", "OTU"),
+           sep = "; ") %>%
+  filter(Family == "Streptosporangiaceae")
+family_otus <- otu_prev_abund %>%
+  group_by(Family) %>%
+  summarise(n_OTUs = n()) %>%
+  arrange(desc(n_OTUs))
+sum(family_otus$n_OTUs) # 44 Streptosporangiaceae OTUs
+
+mtag_sporang <- filter_taxa_from_input(input_filt_rare,
+                                       taxa_to_keep = "Streptosporangiaceae",
+                                       at_spec_level = 5)
+mtag_sporang$map_loaded$sampleID <- as.character(mtag_sporang$map_loaded$sampleID)
+mtag_sporang_otu <- summarize_taxonomy(input = mtag_sporang, 
+                                       level = 8, 
+                                       report_higher_tax = F,
+                                       relative = T) %>%
+  replace(is.na(.), 0)
+mtag_sporang_taxaSort <- data.frame(meanAbund = rowMeans(mtag_sporang_otu),
+                                    otu = rownames(mtag_sporang_otu)) %>%
+  arrange(meanAbund)
+mtag_sporang_aiSort <- mtag_sporang$map_loaded %>%
+  arrange(desc(AI))
+g <- plot_ts_heatmap(mtag_sporang_otu, 
+                     metadata_map = mtag_sporang$map_loaded,
+                     type_header = "sampleID",
+                     min_rel_abund = 0,
+                     custom_sample_order = mtag_sporang_aiSort$sampleID,
+                     custom_taxa_order = mtag_sporang_taxaSort$otu,
+                     remove_other = T) +
+  coord_flip() +
+  ggtitle("Streptosporangiaceae") +
+  theme(axis.text.y = element_text(size = 6),
+        axis.text.x = element_text(size = 4, vjust = 0.5),
+        plot.title = element_text(hjust = 0.5))
+g$layers[[2]] <- NULL
+pdf("InitialFigs/otus_sporang.pdf", width = 8, height = 8)
+g
+dev.off()
 
 
 
@@ -1585,6 +1660,8 @@ length(unique(c(ani$Query, ani$Reference)))
 # Top4 (most prevalent of the top 4 genera)
 # Compare those to Sylph Effective Coverage
 # (and I guess Sylph dRep Effective Coverage)
+
+#### __Mean cov ####
 list.files("data/coverm_output/")
 cm_top4_dfs <- list()
 for (i in 1:length(list.files("data/coverm_output/"))) {
@@ -1668,9 +1745,132 @@ pheatmap(compare_cm_sylph_mat,
 dev.off()
 dev.set(dev.next())
 
+# Need to get list of samples to run StrainFinder
+# Run on samples with the highest coverage
+# Set mindepth parameter to half
+cm_top4_table
+hist(cm_top4_table$GCA_013372845.1_coverM)
+hist(cm_top4_table$GCA_019668465.1_coverM)
+hist(cm_top4_table$GCA_016616885.1_coverM)
+hist(cm_top4_table$GCA_012922115.1_coverM)
+
+# GCA_013372845.1_coverM has 15 samples > 4
+# GCA_019668465.1_coverM has 10 samples > 4
+# GCA_016616885.1_coverM has 57 samples > 4
+# GCA_012922115.1_coverM has 0 samples > 4
+
+# Clearly, start with GCA_016616885.1 (Bradyrhizobium)
+brady_cov4 <- cm_top4_table %>%
+  filter(GCA_016616885.1_coverM > 4) %>%
+  left_join(meta_AI, by = "SampleID") %>%
+  mutate(HalfMean = round(GCA_016616885.1_coverM/2, digits = 0),
+         UnderTwiceMean = round((GCA_016616885.1_coverM*2) - 1, digits = 0)) %>%
+  rename(MeanCoverage = GCA_016616885.1_coverM) %>%
+  dplyr::select(SampleID, AI, MeanCoverage, HalfMean, UnderTwiceMean)
 
 
-# Relative abundance
+
+#### __Cov hist ####
+# Note: Sample 401590 had no reads of any of the top 4 mapped so deleted file
+# This is weird because for mean coverage and rel abund it did...
+# Now only 103 samples
+# Do for Brady first to keep file sizes down
+
+# Brady
+list.files("data/coverm_output_ch/")
+cm_brady_ch_dfs <- list()
+for (i in 1:length(list.files("data/coverm_output_ch/"))) {
+  filename <- list.files("data/coverm_output_ch/")[i]
+  cm_brady_ch_dfs[[i]] <- read.delim(paste("data/coverm_output_ch/", filename, sep = "")) %>%
+    filter(Genome == "GCA_016616885.1_ASM1661688v1_genomic")
+}
+
+# Print number of rows by sample
+brady_nrows <- as.data.frame(matrix(data = NA, 
+                                    nrow = length(list.files("data/coverm_output_ch/")),
+                                    ncol = 2)) %>%
+  set_names(c("Sample", "BradyCoverages"))
+for (i in 1:length(list.files("data/coverm_output_ch/"))) {
+  brady_nrows$Sample[i] <- list.files("data/coverm_output_ch/")[i]
+  brady_nrows$BradyCoverages[i] <- nrow(cm_brady_ch_dfs[[i]])
+}
+# Sample 12446 didn't have any Brady either but that one wasn't in brady_cov4
+
+cm_brady_ch <- cm_brady_ch_dfs[[1]]
+for (i in 2:length(list.files("data/coverm_output_ch/"))) {
+  cm_brady_ch <- rbind(cm_brady_ch, cm_brady_ch_dfs[[i]])
+}
+cm_brady_ch <- cm_brady_ch %>%
+  separate(Sample, into = c("SampleID", "Junk1", "Junk2"), sep = "_") %>%
+  dplyr::select(-Junk1, -Junk2) %>%
+  filter(SampleID %in% brady_cov4$SampleID)
+length(unique(cm_brady_ch$SampleID)) # 56, good
+
+# Check the first 2 samples
+# Check histogram
+# Confirm that the total number of bases is the genome size (8,085,095)
+# Missing 150 bp - that's because coverM trims the first and last 75 bp of the genome by default
+cm_brady_ch_12816 <- cm_brady_ch %>%
+  filter(SampleID == "12816")
+plot(cm_brady_ch_12816$Coverage, cm_brady_ch_12816$Bases)
+sum(cm_brady_ch_12816$Bases)
+
+cm_brady_ch_138538 <- cm_brady_ch %>%
+  filter(SampleID == "138538")
+plot(cm_brady_ch_138538$Coverage, log10(cm_brady_ch_138538$Bases+1))
+plot(cm_brady_ch_138538$Bases, cm_brady_ch_138538$Coverage)
+sum(cm_brady_ch_138538$Bases)
+
+# Check the number of bases with 0 coverage
+# For example, see how many samples have < 50% with 0
+# 34 samples have > 50% genome with at least coverage of 1
+cm_brady_ch_zero <- cm_brady_ch %>%
+  filter(Coverage == 0) %>%
+  mutate(PercGenomeZero = round(Bases/8084945*100, digits = 2)) %>%
+  dplyr::select(SampleID, PercGenomeZero)
+
+# Check the max coverages per sample
+cm_brady_ch_max <- cm_brady_ch %>%
+  group_by(SampleID) %>%
+  summarise(MaxCov = max(Coverage)) %>%
+  mutate(HalfMax = MaxCov/2)
+  
+# How about setting the max at the first value that has only 10 or less bases
+cm_brady_ch_cut10 <- cm_brady_ch %>%
+  group_by(SampleID) %>%
+  filter(Bases < 10) %>%
+  slice_head(n = 1) %>%
+  rename(Coverage10Bases = Coverage) %>%
+  dplyr::select(SampleID, Coverage10Bases)
+
+# Merge all of this info
+brady_info <- brady_cov4 %>%
+  filter(SampleID %in% unique(cm_brady_ch$SampleID)) %>%
+  left_join(cm_brady_ch_zero, by = "SampleID") %>%
+  left_join(cm_brady_ch_max, by = "SampleID") %>%
+  left_join(cm_brady_ch_cut10, by = "SampleID") %>%
+  filter(PercGenomeZero < 60) %>%
+  arrange(AI)
+#write_xlsx(brady_info, "data/Bradyrhizobium_StrainFinder_Info.xlsx", format_headers = F)
+
+ggplot(brady_info, aes(MeanCoverage, PercGenomeZero)) + 
+  geom_point(size = 2, pch = 16, alpha = 0.8) +
+  geom_smooth(method = "lm") +
+  labs(x = "Mean Coverage (coverM)",
+       y = "% bases with 0 coverage (coverM)") +
+  theme_bw()
+
+ggplot(brady_info, aes(AI, MeanCoverage)) + 
+  geom_point(size = 2, pch = 16, alpha = 0.8) +
+  geom_smooth(method = "lm") +
+  labs(x = "Aridity index",
+       y = "Mean Coverage (coverM)") +
+  theme_bw()
+
+
+
+
+#### __Rel abund ####
 list.files("data/coverm_output_ra/")
 cm_top4_ra_dfs <- list()
 for (i in 1:length(list.files("data/coverm_output_ra/"))) {

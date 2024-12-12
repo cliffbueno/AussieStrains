@@ -240,7 +240,15 @@ cp Ref_genomes/GCA_016616885.1_ASM1661688v1_genomic.fna.gz top4/
 cp Ref_genomes/GCA_019668465.1_ASM1966846v1_genomic.fna.gz top4/
 cp Ref_genomes/GCA_012922115.1_ASM1292211v1_genomic.fna.gz top4/
 
-# Also try competitive mapping with the top16 (top 4 of top 4)
+# Ran with -m mean and then a second time with -m relative_abundance
+# Later ran again with -m coverage_histogram
+# Also try competitive mapping with the top16 (top 4 of top 4)? No. Failed
+
+# Need to get number of bases per fna.gz
+conda create -n seqkit_env -c bioconda seqkit
+conda activate seqkit_env
+cd /scratch/alpine/clbd1748/Australia/top4
+seqkit stats GCA_016616885.1_ASM1661688v1_genomic.fna.gz
 
 
 
@@ -291,5 +299,14 @@ blastn -query Strepto_otu_97930.fasta -db top16_blast_db -out Strepto_otu_97930_
 # Minimum mapping quality: 30
 # Minimum depth: The default value of 3 provided should be reset to a value of about 1/2 of the mean of the read depth for lineages with sufficient abundance in the sample to obtain higher average depth of coverage.
 # Maximum depth: Should be set to a bit below 2x the average depth of coverage, to avoid determining SNPs in regions that represent repeats, such as transposons, or other paralogous regions.
+
+# First running on Bradyrhizobium on 53 samples
+# Minimum mean coverage (coverM) of 4
+# Maximum % genome with coverage 0 (coverM) of 60%
+# Setting minimum mapping quality 30
+# Setting minimum depth to half of the mean coverage (coverM), rounded to nearest integer
+# Setting maximum depth to the first coverage value at which the number of bases with that value is < 10
+
+
 
 
