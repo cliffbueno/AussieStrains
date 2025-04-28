@@ -1,6 +1,5 @@
 # Terminal Code Log
 
-
 ###### mTAGs ######
 # mTAGs took too long so ran in 2 batches
 
@@ -145,6 +144,8 @@ scp clbd1748@dtn.rc.colorado.edu:/scratch/alpine/clbd1748/Australia/mtags_output
 
 
 
+
+
 ###### NCBI Datasets ######
 conda activate ncbi_datasets
 cd /scratch/alpine/clbd1748/Australia
@@ -205,6 +206,7 @@ sylph profile ./Sylph/ref_genomes_strep_sketch.syldb ./Sylph/reads_sketch/*.syls
 
 
 
+
 ###### Sylph #########
 # First need to sketch the custom genome database
 # Run with slurm. Should be very fast.
@@ -225,14 +227,17 @@ python ../sylph-utils/sylph_to_taxprof.py -s sylph_profile_ani95.tsv -m ../sylph
 
 
 
+
+
 ##### coverM ########
 # Take Sylph output and calculate relative abundance coverage with coverm
 # Demo for the top 4 genera with the most genomes in the most samples
 # Demo for the top genomes of those 4 that were present in the most samples
-Udaeobacter GCA_013372845.1 36 (72)
-Bradyrhizobium GCA_016616885.1 26 (103)
-Mycobacterium GCA_019668465.1 18 (97)
-Streptomyces GCA_012922115.1 8 (72)
+# Taxon, Sylph presence, (coverM presence), (coverM mean coverage >4)
+Udaeobacter GCA_013372845.1 36 (72) (15)
+Bradyrhizobium GCA_016616885.1 26 (103) (57) (Bradyrhizobium diazoefficiens)
+Mycobacterium GCA_019668465.1 18 (97) (10)
+Streptomyces GCA_012922115.1 8 (72) (0)
 cd /scratch/alpine/clbd1748/Australia/
 mkdir top4
 cp Ref_genomes/GCA_013372845.1_ASM1337284v1_genomic.fna.gz top4/
@@ -252,6 +257,8 @@ seqkit stats GCA_016616885.1_ASM1661688v1_genomic.fna.gz
 
 
 
+
+
 #### Binning MAGs #####
 # To validate StrainFinder on subset of samples
 # Try where the focus genus is most abundant
@@ -262,6 +269,8 @@ seqkit stats GCA_016616885.1_ASM1661688v1_genomic.fna.gz
 # Myco: 401610
 # Acido: 401654
 ## Result: Got 13 MAGs. 1 Streptomyces MAG!
+
+
 
 
 
@@ -289,6 +298,8 @@ blastn -query Strepto_otu_97930.fasta -db top16_blast_db -out Strepto_otu_97930_
 
 
 
+
+
 #### StrainFinder ######
 # Take most prevalent genome of Brady/Strepto/Udaeo/Myco from Sylph
 # Run StrainFinder on all samples where genus was present in mTAGs
@@ -306,6 +317,825 @@ blastn -query Strepto_otu_97930.fasta -db top16_blast_db -out Strepto_otu_97930_
 # Setting minimum mapping quality 30
 # Setting minimum depth to half of the mean coverage (coverM), rounded to nearest integer
 # Setting maximum depth to the first coverage value at which the number of bases with that value is < 10
+
+
+
+
+
+#### FastANI ####
+# First got genome files from KBase to staging area, then used Globus
+# Turns out they were all .gbff files. Use any2fasta to convert them
+# Rename the files just keeping Brady and the sampleID
+cd /scratch/alpine/clbd1748/Australia/BradyStrains
+for file in Brady_*.gbff; do mv "$file" "$(echo "$file" | sed -E 's/^([^_]+_[^_]+)-.*/\1.gbff/')"; done
+conda create -n any2fasta_env -c bioconda any2fasta
+for file in *.gbff; do any2fasta -u "$file" > "${file%.gbff}.fna"; done
+rm *.gbff
+conda deactivate
+
+conda create -n fastani_env -c bioconda fastani
+conda activate fastani_env
+
+# Get the 53 strains and reference genome in to BradyStrainsRef
+# Make lists with genome paths
+find /scratch/alpine/clbd1748/Australia/BradyStrainsRef -type f -name "*.fna" > queryList.txt
+find /scratch/alpine/clbd1748/Australia/BradyStrainsRef -type f -name "*.fna" > referenceList.txt
+sbatch run_fastani.sh
+# Finished with success in 1 hour and 2 mins
+
+
+
+
+##### Sylph #####
+# Run sylph again
+# Try on 53 strains
+# Try on 53 strains plus all GTDB Brady
+conda activate sylph_env
+sylph sketch -g /scratch/alpine/clbd1748/Australia/BradyStrains/*.fna -o /scratch/alpine/clbd1748/Australia/Brady_strains_sketch
+sylph sketch -g /scratch/alpine/clbd1748/Australia/BradyStrainsGTDB/*.fna -o /scratch/alpine/clbd1748/Australia/Brady_strainsGTDB_sketch
+
+sylph profile /scratch/alpine/clbd1748/Australia/Brady_strains_sketch.syldb /scratch/alpine/clbd1748/Australia/Sylph/reads_sketch/*.sylsp -m 95 > /scratch/alpine/clbd1748/Australia/sylph_profile_bradystrains_ani95.tsv
+
+sylph profile /scratch/alpine/clbd1748/Australia/Brady_strainsGTDB_sketch.syldb /scratch/alpine/clbd1748/Australia/Sylph/reads_sketch/*.sylsp -m 95 > /scratch/alpine/clbd1748/Australia/sylph_profile_bradystrainsGTDB_ani95.tsv
+
+
+
+
+
+#### Tree ####
+# For the phylogenetic analysis we need to get the reference, the 53 strains, and all other Bradyrhizobium GTDB genomes. Can use the dereplicated set for this.
+# Then, use GTDB-tk to extract and align the bac120
+# Then, use prottest3 to decide which model to use
+# Then, use RAxML to build a phylogenetic tree
+
+# Made Brady278.txt in R
+scp ~/Documents/GitHub/AussieStrains/data/brady278.txt clbd1748@login.rc.colorado.edu:/scratch/alpine/clbd1748/Australia
+
+cd /scratch/alpine/clbd1748/Australia
+dos2unix brady.txt
+sed 's/"//g' brady278.txt > brady278_cleaned.txt
+
+while read -r line; do cp /scratch/alpine/clbd1748/Australia/Ref_genomes_dRep/"$line"*.fna.gz /scratch/alpine/clbd1748/Australia/BradyStrainsGTDB; done < /scratch/alpine/clbd1748/Australia/brady278_cleaned.txt
+
+ls -l . | egrep -c '^-' # 331, good (278 GTDB + 53 strains)
+
+# Need to gzip the strains
+find /scratch/alpine/clbd1748/Australia/BradyStrainsGTDB -type f -name "*.fna" ! -name "*.fna.gz" -exec gzip {} \;
+
+# Also rename the reference
+mv GCA_016616885.1 Brady_Reference.fna.gz
+
+# And simplify the others
+for file in *.fna.gz; do mv "$file" "$(echo "$file" | sed 's/^\([^_]*_[^_]*\)_.*/\1.fna.gz/')"; done
+
+# And get an outgroup. Use the representative species from another genus in the family
+# Use Nitrobacter winogradskyi GCF_000012725.1
+conda activate ncbi_datasets
+datasets download genome accession GCF_000012725.1 --include genome
+# Rename Nitrobacter.fna.gz and put in the BradyStrainsGTDB
+
+### GTDB-tk
+mamba create -n gtdbtk_env -c conda-forge -c bioconda gtdbtk=2.4.0
+mamba activate gtdbtk_env
+
+wget https://data.ace.uq.edu.au/public/gtdb/data/releases/latest/auxillary_files/gtdbtk_package/full_package/gtdbtk_data.tar.gz
+
+conda env config vars set GTDBTK_DATA_PATH="/scratch/alpine/clbd1748/gtdbtk_r220_data.tar.gz";
+# Identify marker genes
+gtdbtk identify --genome_dir /scratch/alpine/clbd1748/Australia/BradyStrainsGTDB/ --out_dir /scratch/alpine/clbd1748/Australia/identify_output --cpus 16 -x gz
+sbatch run_gtdbtk_identify.sh
+# Ran in 15 mins!
+
+# Align
+gtdbtk align --identify_dir /scratch/alpine/clbd1748/Australia/identify_output/ --out_dir /scratch/alpine/clbd1748/Australia/align_output --cpus 16 --skip_gtdb_refs --tmpdir /scratch/alpine/clbd1748/Australia/gtdb_tmp
+# Ran in 32 seconds!
+gunzip /scratch/alpine/clbd1748/Australia/align_output/align/gtdbtk.bac120.user_msa.fasta.gz
+
+# Test which amino acid substitution model to use with ProtTest3
+wget https://github.com/ddarriba/prottest3/releases/download/3.4.2-release/prottest-3.4.2-20160508.tar.gz
+tar zvxf prottest-3.4.2-20160508.tar.gz
+cd prottest-3.4.2/
+java -jar prottest-3.4.2.jar -i /scratch/alpine/clbd1748/Australia/align_output/align/gtdbtk.bac120.user_msa.fasta -all-matrices -all-distributions -threads 2
+# Result (2.5 h) is that LG+I+G is the best model according to LnL and BIC. Which means use PROTGAMMALG
+
+# RAxML tree
+conda create -n raxml_env -c bioconda raxml
+conda activate raxml_env
+sed 's/\u00B7/-/g' /scratch/alpine/clbd1748/Australia/align_output/align/gtdbtk.bac120.user_msa.fasta > /scratch/alpine/clbd1748/Australia/alignment.fasta
+python fasta2phylip/fasta2phylip.py -i alignment.fasta -o alignment.phy -r
+raxmlHPC -f a -m PROTGAMMALG -p 12345 -x 12345 -N 1000 -s alignment.phy -n LG_BOOTSTRAP -o Nitrobacter.fna
+# Takes about 0.5 hour per bootstrap. 32 CPU finished 52. Try to get 200 total.
+# Run again setting the name to LG_BOOTSTRAP2, use 64 CPU, try to do 152 more
+cat RAxML_bootstrap.LG_BOOTSTRAP RAxML_bootstrap.LG_BOOTSTRAP2 RAxML_bootstrap.LG_BOOTSTRAP3 RAxML_bootstrap.LG_BOOTSTRAP4 RAxML_bootstrap.LG_BOOTSTRAP5 > RAxML_bootstrap_combined
+
+raxmlHPC -f b -m PROTGAMMALG -s alignment.phy -n bp -t RAxML_bestTree.bestTree -z RAxML_bootstrap_combined
+
+
+
+
+#### Strains 16S #####
+# Need to extract 16S sequences from the strains
+# Use barnnap
+conda create -n barnnap_env -c bioconda -c conda-forge barrnap
+conda activate barnnap_env
+conda install bioconda::bedtools
+sbatch run_barnnap.sh
+# Run on Strains, Reference, All
+
+# Extract just the 16S header
+for file in *.fasta; do awk '/^>/ {p = /16S_rRNA/} p' "$file" > "${file%.fasta}_filtered.fasta"; done
+
+# Count headers
+for file in *_filtered.fasta; do echo "$file: $(grep -c '^>' "$file") headers"; done
+# Test if multiple 16S are identical or not
+# Move those with 1 16S to new directory (n = 276)
+for file in *_filtered.fasta; do [ $(grep -c '^>' "$file") -eq 1 ] && mv "$file" One16S/; done
+
+# Rename the header to have the genome name
+for file in *_16S_filtered.fasta; do sed -i "1s|^>.*|>${file%%_16S_filtered.fasta}|g" "$file"; done
+
+# Combine into one fasta
+cat *_16S_filtered.fasta > combined_16S.fasta
+
+# Align with MUSCLE
+conda create -n muscle_env -c bioconda muscle
+conda activate muscle_env
+muscle -align combined_16S.fasta -output alignment_16S.fasta
+Input: 276 seqs, avg length 1461, max 1488, min 422
+00:00 4.5Mb   100.0% Derep 196 uniques, 80 dupes
+
+# Convert to phylip and make tree with RAxML (can compare to bac120 tree)
+python ../../fasta2phylip/fasta2phylip.py -i alignment_16S.fasta -o alignment_16S.phy -r
+
+# ProtTest
+export PATH=$PATH:/usr/bin/java
+conda activate java_env
+java -jar /scratch/alpine/clbd1748/Australia/prottest-3.4.2/prottest-3.4.2.jar -i /scratch/alpine/clbd1748/Australia/barnnap/All/alignment_16S.fasta -all-matrices -all-distributions -threads 16
+# Ran in 10 minutes
+
+# ProtTest not for nucleotides though! Test with iqtree
+conda create -n iqtree_env -c bioconda iqtree
+conda activate iqtree_env
+iqtree2 -s alignment_16S.fasta -m TEST
+# Use GTR+F+I+G4 (GTRGAMMAI in RAxML)
+# RAxML ran in 4 hours!
+# Use the bipartitions file to include branch support
+
+# Also calculate pairwise % identity, helpful for interpretation
+conda create -n phylip_env -c bioconda phylip
+conda activate phylip_env
+distmat < alignment_16S.fasta > distance_matrix.txt # Command not found
+# Run python script
+
+
+
+
+
+##### Validation #####
+# Can't get Brady MAG but got Mycobacterium MAG
+# 401606_concoct_bin.015.fasta
+# 89.66% complete, 1.57% contaminated
+# Run StrainFinder on 401606 with GCA_019668465.1
+# Output was bad, only 79.96% ANI between strain and MAG
+
+# Other idea is to "spike" in a Brady genome
+# Spike in the raw reads from the reference genome to the sample with lowest ANI to reference
+# Can see if adding the reference reads increases the ANI to reference
+# Sample 401624, ANI was 95.4646
+# Download SRA SRR12822150 fastq files
+conda activate java_env
+/projects/clbd1748/software/bbmap/reformat.sh in=SRR12822150.fastq.gz out1=SRR12822150_R1.fastq.gz out2=SRR12822150_R2.fastq.gz
+cat 401624_HL7J5DSX3-1_R1p.fastq.gz SRR12822150_R1.fastq.gz > 401624v_R1.fastq.gz
+cat 401624_HL7J5DSX3-1_R2p.fastq.gz SRR12822150_R2.fastq.gz > 401624v_R2.fastq.gz
+# Coverage should be higher now but first try same parameters in StrainFinder
+
+
+
+##### Variant Calling #####
+# StrainFinder produces .vcf files but this is for the 4 strains in each sample
+# Could try to merge them somehow, or just recalculate
+conda create --name variant_env
+conda activate variant_env
+conda install bioconda::bwa
+conda install bioconda::samtools
+conda install bioconda::bcftools
+conda install bioconda::gatk4
+sbatch run_variantcalling.sh
+# Use RScript to calculate expected and observed heterozygosity
+# Expected = 0.1067996
+# Observed = 0.1387392
+
+
+
+
+
+##### Anvi'o #######
+conda --version
+# conda 24.11.2
+conda create -y --name anvio-8 python=3.10
+conda activate anvio-8
+conda install -y -c conda-forge -c bioconda python=3.10 \
+        sqlite prodigal idba mcl muscle=3.8.1551 famsa hmmer diamond \
+        blast megahit spades bowtie2 bwa graphviz "samtools>=1.9" \
+        trimal iqtree trnascan-se fasttree vmatch r-base r-tidyverse \
+        r-optparse r-stringi r-magrittr bioconductor-qvalue meme ghostscript \
+        nodejs
+conda install -y -c bioconda fastani
+curl -L https://github.com/merenlab/anvio/releases/download/v8/anvio-8.tar.gz \
+        --output anvio-8.tar.gz
+pip install anvio-8.tar.gz
+anvi-self-test --suite mini --num-threads 8
+# The test worked after following this: https://merenlab.org/2018/03/07/working-with-remote-interative/
+# See Daan Speth comment
+#!/usr/bin/env bash
+[[ "$(whoami)" = "cliffb" ]] && export ANVIO_PORT=8080
+
+anvi-setup-scg-taxonomy
+anvi-setup-ncbi-cogs
+anvi-setup-kegg-data
+anvi-setup-cazymes
+mkdir -p ~/github/ && cd ~/github/
+git clone https://github.com/merenlab/CONCOCT.git
+conda install conda-forge::cython
+cd CONCOCT
+python setup.py build
+python setup.py install
+anvi-cluster-contigs -h
+
+# Use this for anvio
+alias rci="ssh -L 8090:localhost:8090 clbd1748@login.rc.colorado.edu | tee /dev/tty | python3 ~/.ssh/run_webbrowser.py"
+
+alias mici="ssh -L 8090:localhost:8090 cliffb@microbe.colorado.edu | tee /dev/tty | python3 ~/.ssh/run_webbrowser.py"
+
+## Pangenomics workflow
+cd /scratch/alpine/clbd1748/Australia/Pangenome/contigs_db
+# 1. Reformat fasta (fast)
+for file in *.fna; do anvi-script-reformat-fasta "$file" -o "${file%.fna}-contigs-fasta" --simplify-names --report-file "${file%.fna}-contig-rename-report.txt"; done
+
+# 2. Make contigs database (run in slurm, took 1 h 21 mins)
+for file in *-contigs-fasta; do anvi-gen-contigs-database -f "$file" --project-name "${file%-contigs-fasta}" -o "${file%-contigs-fasta}.db"; done
+
+# 2a. Populate the contigs datbase (hmms, scg, trna, cogs, keggs, cazymes)
+sbatch slurm-run-hmms.sh (23 mins)
+sbatch slurm-run-scg-taxonomy.sh (50 mins)
+sbatch slurm-run-ncbi-cogs.sh (18 mins)
+sbatch slurm-run-kegg-kofams.sh (9 hours)
+sbatch slurm-run-cazymes.sh (5 mins)
+
+# 3. Make genomes storage object (fast)
+anvi-gen-genomes-storage -e external-genomes.txt \
+                         -o BRADY-GENOMES.db
+                         
+# 4. Run pangenome analysis (run in slurm)
+sbatch slurm-pan-genome.sh (8 hours)
+
+# 5. Compute ANI to show as a heatmap (run in slurm)
+sbatch slurm-run-ani.sh (6 hours)
+
+# 6. Get functions across genomes
+anvi-script-gen-function-matrix-across-genomes
+
+# 6a. Display functions
+anvi-display-functions
+                               
+# 7. Display pangenome (opens in browser)
+anvi-display-pan -g BRADY-GENOMES.db \
+                 -p BRADY/Bradyrhizobium_Pan-PAN.db
+                 
+# 8. Summarize pangenome (fast)
+anvi-script-add-default-collection -p BRADY/Bradyrhizobium_Pan-PAN.db -C BRADY-COLLECTION
+anvi-summarize -p BRADY/Bradyrhizobium_Pan-PAN.db \
+                 -g BRADY-GENOMES.db \
+                 -C BRADY-COLLECTION \
+                 -o BRADY-SUMMARY
+                 
+# 6560 Gene clusters in all 53 genomes
+# 182 in 52
+# 697 in 3 to 51 genomes
+# 94 in 2
+# 309 in 1
+# Known COG 5583, Unknown 2259
+
+# 9. Explore heterogeneity
+# Functional Homogeneity = 1: 500
+# Geometric Homogeneity = 1: 3992
+# Get gene clusters that are present in all 53 but have heterogeneity
+# 0.90 was 208 GC. 0.85 is 135. 0.80 is 91. 0.75 is 61.
+anvi-get-sequences-for-gene-clusters -g BRADY-GENOMES.db \
+                                     -p BRADY/Bradyrhizobium_Pan-PAN.db \
+                                     --split-output-per-gene-cluster \
+                                     --output-file-prefix HetF_GC/BRADY \
+                                     --min-num-genomes-gene-cluster-occurs 53 \
+                                     --max-functional-homogeneity-index 0.75
+                
+# 0.75 is 142                     
+anvi-get-sequences-for-gene-clusters -g BRADY-GENOMES.db \
+                                     -p BRADY/Bradyrhizobium_Pan-PAN.db \
+                                     --split-output-per-gene-cluster \
+                                     --output-file-prefix HetG_GC/BRADY \
+                                     --min-num-genomes-gene-cluster-occurs 53 \
+                                     --max-geometric-homogeneity-index 0.75
+                                     
+# Get functions for those gene clusters
+anvi-export-gene-clusters
+anvi-export-functions
+anvi-display-functions
+
+
+                 
+                 
+
+
+###### POGENOM ##########
+# Take .vcf files from StrainFinder and run POGENOM
+# .vcf file can be from single or multiple samples
+# Will calculate genome-wide pi (nucleotide diversity) and Fst
+# If a gff file is provided, gene-wise pi and gene-wise Fst will also be calculated
+sbatch run_pogenom.sh (17 seconds for 1 sample)
+## Cannot use StrainFinder output because no RO or AO columns!!!!
+## Need to run Input_POGENOM pipeline!!
+
+# Reinstall POGENOM in the scratch directory for space reasons
+conda remove -n ip_env --all
+git clone https://github.com/EnvGen/POGENOM
+cd POGENOM/Input_POGENOM
+conda env create -f config_files/Input_POGENOM_conda_env_setup.yaml
+
+# Original Input_POGENOM test took 24 mins for 4 MG and 8 genomes
+# Now 1 genome and 53 MG
+# Don't use any cutoff, want it done on those 53. Already know they have coverage > 4
+# Note that the default is median coverage 20 and minimum percent covered 40
+mkdir /scratch/alpine/clbd1748/POGENOM/Input_POGENOM/RAW_DATA/Reads/Aus/
+mkdir /scratch/alpine/clbd1748/POGENOM/Input_POGENOM/RAW_DATA/Genomes/Aus/
+# Copy in the 53 metagenomes
+while read prefix; do cp ${prefix}*.fastq.gz /scratch/alpine/clbd1748/POGENOM/Input_POGENOM/RAW_DATA/Reads/Aus/; done < sampleIDs_n53.txt
+# Copy in the genome
+cp /scratch/alpine/clbd1748/Australia/BradyReference/BradyReference.fasta /scratch/alpine/clbd1748/POGENOM/Input_POGENOM/RAW_DATA/Genomes/Aus/
+# Rename reads
+for file in *_R1p.fastq.gz; do mv "$file" "${file/_R1p.fastq.gz/_R1.fastq.gz}"; done
+for file in *_R2p.fastq.gz; do mv "$file" "${file/_R2p.fastq.gz/_R2.fastq.gz}"; done
+for file in *_R1.fastq.gz; do mv "$file" "$(echo "$file" | sed 's/_.*_R1.fastq.gz/_R1.fastq.gz/')"; done
+for file in *_R2.fastq.gz; do mv "$file" "$(echo "$file" | sed 's/_.*_R2.fastq.gz/_R2.fastq.gz/')"; done
+
+# Run
+sbatch run_input_pogenom.sh (failed after mapping, 2 h 42 m)
+conda activate ip_env
+snakemake -s snakefiles/step1_pogenom_input --unlock
+sbatch run_input_pogenom.sh
+# Troubleshooting on GitHub
+# Rerun without sample 7085
+sbatch run_input_pogenom.sh (success, 3 h 4 min)
+# vcf file for POGENOM is here:
+/scratch/alpine/clbd1748/POGENOM/Input_POGENOM/06_VCF/Aus/params_cov_0_bdth_0_subsamp_FALSE_mpq_20_bq_15/BradyReference.vcf
+
+# Now run POGENOM on that .vcf file
+sbatch run_pogenom.sh (didn't work, problem with .gff Non-unique gene identifiers)
+# Run with fasta instead of gff
+sbatch run_pogenom_fasta.sh (2 mins)
+
+# Diagnose and fix .gff file
+cut -f9 ~/Downloads/BradyFiles/BradyReference.gff | grep -o "ID=[^;]*" | sort | uniq -d
+# These 2 are not unique
+ID=cds-QQO31314.1
+ID=cds-QQO31932.1
+# Manually deleted the duplicates to make BradyReference_fixed.gff. Retry.
+sbatch run_pogenom.sh
+
+# Use gff and fasta. First rename the header
+sed '1c >CP067102.1' /scratch/alpine/clbd1748/Australia/BradyReference/BradyReference.fasta > BradyReference.fasta
+
+perl pogenom.pl --vcf_file /scratch/alpine/clbd1748/POGENOM/Input_POGENOM/06_VCF/Aus/params_cov_0_bdth_0_subsamp_FALSE_mpq_20_bq_15/BradyReference.vcf --out Brady --gff_file BradyReference_fixed.gff --fasta_file BradyReference.fasta --genetic_code_file standard_genetic_code.txt
+
+sbatch run_pogenom.sh (31 mins)
+# It worked but it is mostly NA
+# There were 4 genes with pNpS values above 1
+# ID, Length, Start, End
+ID=GCA_016616885.1_ASM1661688v1_genomic.fna.gz_assembly.RAST.CDS.5770_CDS 225 5755567 5755791
+ID=GCA_016616885.1_ASM1661688v1_genomic.fna.gz_assembly.RAST.CDS.93_CDS 1704 101572 103275
+ID=GCA_016616885.1_ASM1661688v1_genomic.fna.gz_assembly.RAST.CDS.3619_CDS 555 3631839 3632393
+ID=GCA_016616885.1_ASM1661688v1_genomic.fna.gz_assembly.RAST.CDS.3598_CDS 4116 3606887 3611002
+# All samples combined pNpS
+0.30241935
+0.24007237
+0.16186161
+0.02321547
+
+
+
+##### Sylph Rerun ####
+# Reran Sylph with the 53 strains
+# Reran Sylph with 53 Strains plus GTDB Brady (n = 278)
+# Met with Noah, new plan is to rerun Sylph using all 4 StrainFinder strains per sample and full GTDB Brady genomes
+# So, need to sketch 212 Strains and 278 GTDB, total of 
+# Then analyze the taxonomic profile like normal community data
+
+# 1. All Strains
+# Run checkM on strains 2-4 (already did on 1)
+# Export strains 2-4 to staging area to transfer to CURC
+# Rename the files just keeping Brady and the sampleID and Strain number
+cd /scratch/alpine/clbd1748/Australia/BradyStrains2to4
+for file in *.gbff; do mv "$file" "$(echo "$file" | sed -E 's/\.Genome.*Genome//; s/-Reads_1-//')"; done
+for file in *.gbff; do mv "$file" "$(echo "$file" | sed -E 's/(.*)Strain/\1_Strain/')"; done
+# Use any2fasta to convert them from .gbff to .fna
+conda activate any2fasta_env
+for file in *.gbff; do any2fasta -u "$file" > "${file%.gbff}.fna"; done
+rm *.gbff
+conda deactivate
+
+# 2. All Brady (full GTDB)
+# Made Brady869.txt in R
+scp ~/Documents/GitHub/AussieStrains/data/brady869.txt clbd1748@login.rc.colorado.edu:/scratch/alpine/clbd1748/Australia
+
+cd /scratch/alpine/clbd1748/Australia
+dos2unix brady869.txt
+sed 's/"//g' brady869.txt > brady869_cleaned.txt
+
+while read -r line; do cp /scratch/alpine/clbd1748/Australia/Ref_genomes/"$line"*.fna.gz /scratch/alpine/clbd1748/Australia/Brady1081; done < /scratch/alpine/clbd1748/Australia/brady869_cleaned.txt
+
+ls -l . | egrep -c '^-' # 1081, good (869 GTDB + 212 strains)
+
+# Need to gzip the strains
+find /scratch/alpine/clbd1748/Australia/Brady1081 -type f -name "*.fna" ! -name "*.fna.gz" -exec gzip {} \;
+
+# Also rename the reference
+mv GCA_016616885.1_ASM1661688v1_genomic.fna.gz Brady_Reference.fna.gz
+
+# And simplify the others
+for file in *.fna.gz; do mv "$file" "$(echo "$file" | sed -E 's/(GCA_[^_]+\.[0-9]+).*genomic\.fna\.gz/\1_genomic.fna.gz/')"; done
+for file in *.fna.gz; do mv "$file" "$(echo "$file" | sed 's/_genomic//')"; done
+
+# 3. Sketch genomes and reads and run Sylph
+conda activate sylph_env
+sylph sketch -g /scratch/alpine/clbd1748/Australia/Brady1081/*.fna.gz -o /scratch/alpine/clbd1748/Australia/brady1081_sketch
+
+# Got 52 reads in POGENOM folder
+# Add 53rd sample and de-interleave
+conda activate java_env
+/projects/clbd1748/software/bbmap/reformat.sh in=7085_inter.fastq.gz out1=7085_R1.fastq.gz out2=7085_R2.fastq.gz
+conda deactivate
+
+sylph sketch -1 /scratch/alpine/clbd1748/Australia_copy/*R1.fastq.gz -2 /scratch/alpine/clbd1748/Australia_copy/*R2.fastq.gz -d /scratch/alpine/clbd1748/Australia_copy -t 16
+
+sylph profile /scratch/alpine/clbd1748/Australia/brady1081_sketch.syldb /scratch/alpine/clbd1748/Australia/reads_sketch/*.sylsp -m 95 > /scratch/alpine/clbd1748/Australia/sylph_profile_brady1081.tsv
+
+scp clbd1748@login.rc.colorado.edu:/scratch/alpine/clbd1748/Australia_copy/sylph_profile_brady1081.tsv ~/Documents/GitHub/AussieStrains/data/
+
+
+
+### Tree Brady 118 ####
+# Need tree of the 118 genomes that were detected by Sylph for UniFrac calculation
+# Made Brady118.txt in R
+scp ~/Documents/GitHub/AussieStrains/data/brady118.txt clbd1748@login.rc.colorado.edu:/scratch/alpine/clbd1748/Australia_copy
+
+dos2unix brady118.txt
+sed 's/"//g' brady118.txt > brady118_cleaned.txt
+
+while read -r line; do cp /scratch/alpine/clbd1748/Australia_copy/Brady1081/"$line" /scratch/alpine/clbd1748/Australia_copy/Brady118; done < /scratch/alpine/clbd1748/Australia_copy/brady118_cleaned.txt
+
+mamba activate gtdbtk_env
+conda env config vars set GTDBTK_DATA_PATH="/scratch/alpine/clbd1748/release220";
+
+# Identify marker genes
+gtdbtk identify --genome_dir /scratch/alpine/clbd1748/Australia_copy/Brady118/ --out_dir /scratch/alpine/clbd1748/Australia_copy/identify_output --cpus 16 -x gz
+sbatch Brady118_identify.sh
+# Ran in 6 mins!
+gunzip /scratch/alpine/clbd1748/Australia_copy/align_output/align/gtdbtk.bac120.user_msa.fasta.gz
+
+# Align
+gtdbtk align --identify_dir /scratch/alpine/clbd1748/Australia_copy/identify_output/ --out_dir /scratch/alpine/clbd1748/Australia_copy/align_output --cpus 16 --skip_gtdb_refs --tmpdir /scratch/alpine/clbd1748/Australia_copy/gtdb_tmp
+sbatch Brady118_align.sh
+# Ran in 29 seconds!
+
+# Test which amino acid substitution model to use with ProtTest3
+wget https://github.com/ddarriba/prottest3/releases/download/3.4.2-release/prottest-3.4.2-20160508.tar.gz
+tar zvxf prottest-3.4.2-20160508.tar.gz
+java -jar /scratch/alpine/clbd1748/Australia_copy/prottest-3.4.2/prottest-3.4.2.jar -i /scratch/alpine/clbd1748/Australia_copy/align_output/align/gtdbtk.bac120.user_msa.fasta -all-matrices -all-distributions -threads 16
+sbatch Brady118_prottest.sh
+# Result (2.5 h) is that JTT+I+G is the best model according to LnL and BIC. Which means use PROTGAMMAJTT
+
+# Fasttree (v 2.1.11)
+conda create -n fasttree_env -c bioconda fasttree
+conda activate fasttree_env
+FastTree -gamma -lg /scratch/alpine/clbd1748/Australia_copy/align_output/align/gtdbtk.bac120.user_msa.fasta > brady118_fasttree.tree
+scp clbd1748@login.rc.colorado.edu:/scratch/alpine/clbd1748/Australia_copy/brady118_fasttree.tree ~/Documents/GitHub/AussieStrains/data/
+
+# IQ-Tree
+Run on web server with JTT+I+G
+http://iqtree.cibiv.univie.ac.at/?user=cliff.buenodemesquita@colorado.edu&jobid=250128074956
+
+
+
+#### Tree Brady 1081/993 -> 134 ####
+# Need to see how many bac120 markers are missing from all the genomes
+# Need to make big tree for context
+# Then make a tree with 134 detected by Sylph in 104 samples
+
+mamba activate gtdbtk_env
+conda env config vars set GTDBTK_DATA_PATH="/scratch/alpine/clbd1748/release220";
+
+# Identify
+gtdbtk identify --genome_dir /scratch/alpine/clbd1748/Australia_copy/Brady1081/ --out_dir /scratch/alpine/clbd1748/Australia_copy/Brady1081_Tree/identify_output --cpus 16 -x gz
+sbatch Brady1081_identify.sh
+# Ran in 55 minutes
+
+# Align
+gtdbtk align --identify_dir /scratch/alpine/clbd1748/Australia_copy/Brady1081_Tree/identify_output/ --out_dir /scratch/alpine/clbd1748/Australia_copy/Brady1081_Tree/align_output --cpus 16 --skip_gtdb_refs --tmpdir /scratch/alpine/clbd1748/Australia_copy/gtdb_tmp
+sbatch Brady1081_align.sh
+# Ran in 57 seconds
+gunzip /scratch/alpine/clbd1748/Australia_copy/Brady1081_Tree/align_output/align/gtdbtk.bac120.user_msa.fasta.gz
+
+# In R, looked at number of missing bac120 genes
+# Set a cutoff of missing <= 13 genes
+# This removes all Strain 4 and some GTDB
+# Filter the alignment just to contain the subset of those 993 genomes
+
+# Don't retest model. Assume it is the same as the Brady332 result (LG+I+G)
+# FastTree
+FastTree -gamma -lg /scratch/alpine/clbd1748/Australia_copy/Brady1081_Tree/align_output/align/Brady993_msa.fasta > brady993_fasttree.tree
+sbatch Brady1081_fasttree.sh
+# Finished in 7 minutes!
+scp clbd1748@login.rc.colorado.edu:/scratch/alpine/clbd1748/Australia_copy/brady993_fasttree.tree ~/Documents/GitHub/AussieStrains/data/
+
+## Rerun but remove gaps! Set --min_perc_taxa to 100!
+# Need to reidentify with 993 instead of 1081
+sbatch Brady993_identify.sh
+# Ran in 1 hour
+sbatch Brady1081_align_nogap.sh
+# Ran in 3 mins
+# Test different levels of --min_perc_taxa to make sure you get enough columns
+# Set ncol to 2000 per gene instead of the default of 42
+# 100: 16 AA (too low)
+# 99: 2409 (use this!)
+# 90: 7282
+# 75: 7751
+# 50: 8168
+gunzip /scratch/alpine/clbd1748/Australia_copy/Brady993_Tree/align_output_nogap/align/gtdbtk.bac120.user_msa.fasta.gz
+sbatch Brady993_fasttree.sh
+
+# 134
+dos2unix brady134.txt
+sed 's/"//g' brady134.txt > brady134_cleaned.txt
+while read -r line; do cp /scratch/alpine/clbd1748/Australia_copy/Brady1081/"$line" /scratch/alpine/clbd1748/Australia_copy/Brady134; done < /scratch/alpine/clbd1748/Australia_copy/brady134_cleaned.txt
+Align min 99% = 2971 AAs
+gunzip /scratch/alpine/clbd1748/Australia_copy/Brady134_Tree/align_output_nogap/align/gtdbtk.bac120.user_msa.fasta.gz
+
+# 182 (Detected in Sylph n = 331 samples)
+dos2unix brady182.txt
+sed 's/"//g' brady182.txt > brady182_cleaned.txt
+while read -r line; do cp /scratch/alpine/clbd1748/Australia_copy/Brady1081/"$line" /scratch/alpine/clbd1748/Australia_copy/Brady182; done < /scratch/alpine/clbd1748/Australia_copy/brady182_cleaned.txt
+Align min 99% = 2215 AAs
+gunzip /scratch/alpine/clbd1748/Australia_copy/Brady182_Tree/align_output_nogap/align/gtdbtk.bac120.user_msa.fasta.gz
+
+# 181 (Detected in Sylph n = 331 samples, no Strain3)
+# Also need to use Nitrobacter winogradsky as an outgroup to root the tree!
+dos2unix brady181.txt
+sed 's/"//g' brady181.txt > brady181_cleaned.txt
+while read -r line; do cp /scratch/alpine/clbd1748/Australia_copy/Brady993/"$line" /scratch/alpine/clbd1748/Australia_copy/Brady181; done < /scratch/alpine/clbd1748/Australia_copy/brady181_cleaned.txt
+sbatch Brady181_identify.sh (9 minutes, 16 cores)
+sbatch Brady181_align_nogap.sh (1 minute, 16 cores)
+# Align min 99% = 3328 AAs. Min 100% = 2026 AAs. Use this.
+gunzip /scratch/alpine/clbd1748/Australia_copy/Brady181_Tree/align_output_nogap/align/gtdbtk.bac120.user_msa.fasta.gz
+sbatch Brady181_fasttree.sh (1 minute, 16 cores)
+scp clbd1748@login.rc.colorado.edu:/scratch/alpine/clbd1748/Australia_copy/Brady181_Tree/brady181_fasttree_nogap.tree ~/Documents/GitHub/AussieStrains/data/
+
+
+
+
+
+
+#### Sylph 993 ####
+dos2unix brady993.txt
+sed 's/"//g' brady993.txt > brady993_cleaned.txt
+while read -r line; do cp /scratch/alpine/clbd1748/Australia_copy/Brady1081/"$line" /scratch/alpine/clbd1748/Australia_copy/Brady993; done < /scratch/alpine/clbd1748/Australia_copy/brady993_cleaned.txt
+
+conda activate sylph_env
+sylph sketch -g /scratch/alpine/clbd1748/Australia_copy/Brady993/*.fna.gz -o /scratch/alpine/clbd1748/Australia_copy/brady993_sketch
+
+sylph profile /scratch/alpine/clbd1748/Australia_copy/brady993_sketch.syldb /scratch/alpine/clbd1748/Australia_copy/reads_sketch/*.sylsp -m 95 > /scratch/alpine/clbd1748/Australia_copy/sylph_profile_brady993_n53.tsv
+
+scp clbd1748@login.rc.colorado.edu:/scratch/alpine/clbd1748/Australia_copy/Sylph/sylph_profile_brady993_n104.tsv ~/Documents/GitHub/AussieStrains/data/
+
+
+
+#### Sylph 915 ####
+# GTDB + Strain1 + Strain2, missing 4 or less bac120
+dos2unix brady915.txt
+sed 's/"//g' brady915.txt > brady915_cleaned.txt
+while read -r line; do cp /scratch/alpine/clbd1748/Australia_copy/Brady993/"$line" /scratch/alpine/clbd1748/Australia_copy/Brady915; done < /scratch/alpine/clbd1748/Australia_copy/brady915_cleaned.txt
+
+conda activate sylph_env
+sylph sketch -g /scratch/alpine/clbd1748/Australia_copy/Brady915/*.fna.gz -o /scratch/alpine/clbd1748/Australia_copy/brady915_sketch
+
+sylph profile /scratch/alpine/clbd1748/Australia_copy/Sylph/brady915_sketch.syldb /scratch/alpine/clbd1748/Australia_copy/reads_sketch331/*.sylsp -m 95 > /scratch/alpine/clbd1748/Australia_copy/Sylph/sylph_profile_brady915_n331.tsv
+
+scp clbd1748@login.rc.colorado.edu:/scratch/alpine/clbd1748/Australia_copy/Sylph/sylph_profile_brady915_n331.tsv ~/Documents/GitHub/AussieStrains/data/
+
+
+
+#### FastANI ######
+conda activate fastani_env
+
+# Genomes in Brady1081
+# Make lists with genome paths
+find /scratch/alpine/clbd1748/Australia_copy/Brady1081 -type f -name "*.fna.gz" > queryList.txt
+find /scratch/alpine/clbd1748/Australia_copy/Brady1081 -type f -name "*.fna.gz" > referenceList.txt
+sbatch run_fastani.sh
+# Timed out after 24 hours!
+
+# Genomes in StrainFinder (106 strains and reference, want to report this)
+find /scratch/alpine/clbd1748/Australia_copy/StrainFinder -type f -name "*.fna.gz" > queryList.txt
+find /scratch/alpine/clbd1748/Australia_copy/StrainFinder -type f -name "*.fna.gz" > referenceList.txt
+sbatch run_fastani.sh (19 minutes, 16 cores)
+
+
+##### PANGENOMICS #####
+# Rerun Anvi'o pipeline with the 182 genomes in the final Sylph run
+
+conda activate anvio-8
+
+# 1. Reformat fasta (fast)
+for file in *.fna; do anvi-script-reformat-fasta "$file" -o "${file%.fna}-contigs-fasta" --simplify-names --report-file "${file%.fna}-contig-rename-report.txt"; done
+
+# 2. Make contigs database (run in slurm, took 3 h 54 mins)
+for file in *-contigs-fasta; do anvi-gen-contigs-database -f "$file" --project-name "${file%-contigs-fasta}" -o "${file%-contigs-fasta}.db"; done
+
+# Missed one! Reformat, remake db, re annotate.
+anvi-gen-contigs-database -f GCA_001908185.1-contigs-fasta --project-name GCA_001908185.1-contigs-fasta -o GCA_001908185.1.db
+
+anvi-run-kegg-kofams -c GCA_001908185.1.db
+
+# 2a. Populate the contigs datbase (hmms, scg, trna, cogs, keggs, cazymes)
+sbatch annotate-contigs.sh 24 h
+sbatch annotate-contigs2.sh 3.5 h
+sbatch annotate-contigs3.sh 11 min
+
+# 3. Make genomes storage object (fast)
+anvi-gen-genomes-storage -e external_genomes182.txt \
+                         -o BRADY-GENOMES.db
+                         
+# 4. Run pangenome analysis (run in slurm, 21 h 53 mins)
+sbatch pan-genome.sh
+
+# 5. Compute ANI to show as a heatmap (run in slurm, 25 mins)
+sbatch run-ani.sh
+# Export as matrix.
+anvi-export-matrix -p Bradyrhizobium_Pan-PAN.db -c CONTIGS.db -m ANI -o ani_matrix.txt
+
+# 6. Get functions across genomes (22 mins)
+anvi-script-gen-function-matrix-across-genomes -e external_genomes182.txt \
+                                               --annotation-source KOfam \
+                                               --output-file-prefix KO
+# 3214 KO fams!
+
+# 7. Display pangenome (opens in browser, do on microbe)
+anvi-display-pan -g BRADY-GENOMES.db \
+                 -p Bradyrhizobium_Pan-PAN.db
+                 
+# 8. Summarize pangenome (5 mins)
+anvi-script-add-default-collection -p BRADY/Bradyrhizobium_Pan-PAN.db -C BRADY-COLLECTION
+anvi-summarize -p BRADY/Bradyrhizobium_Pan-PAN.db \
+                 -g BRADY-GENOMES.db \
+                 -C BRADY-COLLECTION \
+                 -o BRADY-SUMMARY
+                 
+# 1505 Gene clusters in all 182 genomes
+# 182 in 52
+# 697 in 3 to 51 genomes
+# 94 in 2
+# 309 in 1
+# Known COG 5583, Unknown 2259
+
+
+
+#### Rerun with 181 genomes from yet another Sylph run....
+sbatch reformat-fasta.sh (18 mins, 8 cores)
+sbatch contigs-db.sh (5 h, 16 cores)
+sbatch annotate-other.sh (6 h, 16 cores)
+sbatch annotate-kegg.sh (23.5 h, 64 cores)
+sbatch genomes-storage.sh (3 mins, 1 core)
+sbatch pan-genome.sh (21 h, 48 cores)
+sbatch run-ani.sh (26 min, 24 cores)
+sbatch get-function-cazy.sh (1.5 mins, 1 core)
+sbatch get-function-ko.sh (1.5 mins, 1 core)
+sbatch summarize.sh (3.5 mins, 4 cores)
+
+anvi-export-table -t items -p BRADY/Bradyrhizobium_Pan-PAN.db -o brady181_ani.txt
+
+### 16S on those 181
+run_barnnap.sh (3 mins)
+
+# Extract just the 16S header
+for file in *.fasta; do awk '/^>/ {p = /16S_rRNA/} p' "$file" > "${file%.fasta}_filtered.fasta"; done
+
+# Note: GCA_936928535.1 missing 16S and GCA_001908185.1 incomplete 16S. Delete.
+
+# Count headers
+for file in *_filtered.fasta; do echo "$file: $(grep -c '^>' "$file") headers"; done
+# 2 had 2 16S, one complete, one not, deleted the incomplete one
+
+# Rename the header to have the genome name
+for file in *_16S_filtered.fasta; do sed -i "1s|^>.*|>${file%%_16S_filtered.fasta}|g" "$file"; done
+
+# Combine into one fasta
+cat *_16S_filtered.fasta > combined_16S.fasta
+
+# Align with MUSCLE
+conda activate muscle_env
+muscle -align combined_16S.fasta -output alignment_16S.fasta
+6 mins 8 cores
+
+# Rename to aligned_sequences.fasta
+python calculate_pairwise_identity.py
+
+
+#### Commercial #####
+# See Kohlmeier et al. 2025
+# They posted genomes of 19 commercial Brady innoculants
+# https://www.ncbi.nlm.nih.gov/bioproject/783123
+
+
+#### Plasmids ####
+seqkit fx2tab -l -n ./*.fna
+(https://forum.gtdb.ecogenomic.org/t/incorrect-annotation-in-the-representative-genomes/269)
+# 2 plasmids found!
+CP100604.1 Bradyrhizobium sp. Ash2021 chromosome, complete genome	9328819
+Bradyrhizobium sp. Ash2021 plasmid p_unamed, complete sequence	375468 (4%)
+
+CP121650.1 Bradyrhizobium sp. CB82 chromosome, complete genome	9242232
+CP121651.1 Bradyrhizobium sp. CB82 plasmid pCB82_1, complete sequence	900293 (9%)
+
+
+
+#### Plants #####
+# Download all complete chloroplast genomes on NCBI
+# Use link from Nolan
+find . ! -name '*NC*' -type f -delete
+
+sylph profile /scratch/alpine/clbd1748/Australia_copy/Sylph/Chloro14706_sketch.syldb /scratch/alpine/clbd1748/Australia_copy/reads_sketch331/*.sylsp -t 8 -m 95 > /scratch/alpine/clbd1748/Australia_copy/Sylph/sylph_profile_chloro14706_95.tsv
+
+/home/clbd1748/edirect/esearch -db nucleotide -query "trnL[GENE] AND Viridiplantae[ORGN]" | /home/clbd1748/edirect/efetch -format fasta > trnL_ncbi.fasta
+
+
+# Download matK from BOLD. Format in the Main R script
+# Make SILVA_matK.fasta
+conda activate pf
+phyloFlash_makedb.pl --ref_minlength 130 --CPUs 16 --mem 30 --silva_file /scratch/alpine/clbd1748/Australia_copy/SILVA_CustomDB_matK.fasta --univec_file /scratch/alpine/clbd1748/UniVec --log phyloFlash_makedb.matK.log
+# Need to run the steps manually
+# The steps are:
+# Filter LSU
+# Filter UniVec
+# Make UDB
+# Cluster 99% and 96%
+
+
+# Try vsearch
+conda create -n vsearch_env -c bioconda vsearch
+conda activate vsearch_env
+vsearch --usearch_global queries.fsa --db database.fsa --id 0.98 --alnout alnout.txt
+
+cd CustomDB
+vsearch --makeudb_usearch --threads 32 --notrunclabels SILVA_SSU.fasta –output SILVA_SSU.noLSU.masked.trimmed.udb
+
+vsearch --threads 32 --notrunclabels --makeudb_usearch ./SILVA_SSU.noLSU.masked.trimmed.fasta –output ./SILVA_SSU.noLSU.masked.trimmed.udb 2>tmp.vsearch_make_udb.log
+
+# Cluster
+vsearch --cluster_fast ./SILVA_SSU.noLSU.masked.trimmed.fasta –id 0.99 –centroids ./SILVA_SSU.noLSU.masked.trimmed.NR99.fasta --notrunclabels --threads 32
+
+# No - solution is to trick phyloFlash into skipping barnnap
+# Copy the fasta and make files
+SILVA_SSU.noLSU.fasta
+SILVA_SSU.noLSU.masked.fasta
+SILVA_SSU.noLSU.masked.trimmed.fasta
+SILVA_SSU.noLSU.masked.trimmed.udb
+# Ran in 3 hours
+
+# Now run again but with Devin's trnL database
+# 100% clusterid
+# 6 h, 32 cores
+
+
+
+#### Other Genome Stuff ####
+# Codon Usage Bias
+conda create -n codonw_env -c bioconda codonw
+
+
+
+##################### NEON #################################
+# 2017 data from 36 sites
+# 2023 data from X sites, seq at JGI, much higher depth!! Use this.
+# Don't use because 0-30 cm depth
+
+
+##################### LUCAS ################################
+# Requested LUCAS 2018 topsoil data
+https://esdac.jrc.ec.europa.eu/content/lucas-2018-topsoil-data
+# Metagenomes 
+https://esdac.jrc.ec.europa.eu/content/dna-metagenomes-soil-biodiversity
+# There are 658 metagenomes available here
+# Need official collaboration to access site info for the metaG
+# Don't use because 0-30 cm depth
+
 
 
 
