@@ -1,5 +1,17 @@
-# Analysis for soil bacterial strain manuscript
-# By Cliff Bueno de Mesquita, Fierer Lab, Fall 2024, Spring 2025
+# Analysis for Bradyrhizobium strain-level diversity and ecology manuscript
+# For submission to ISME J
+# By Cliff Bueno de Mesquita, Fierer Lab, Fall 2024 to Spring 2025
+
+# Document outline (see document outline on right)
+# 1. Setup
+# 2. Environment
+# 3. Dominant taxa (mTAGs)
+# 4. Reference genomes
+# 5. Strain Info (ANI, 16S)
+# 6. Strain Distributions/Ecology
+# 7. Strain Pangenomics
+
+
 
 #### 1. Setup ####
 # Libraries
@@ -65,10 +77,19 @@ replace_lower_triangle_na <- function(mat) {
   }
   return(mat)
 }
+save_pheatmap_pdf <- function(x, filename, width = 6, height = 8) {
+  stopifnot(!missing(x))
+  stopifnot(!missing(filename))
+  pdf(filename, width=width, height=height)
+  grid::grid.newpage()
+  grid::grid.draw(x$gtable)
+  dev.off()
+}
 
 # Working directory
 setwd("~/Documents/GitHub/AussieStrains/")
 
+# Metadata (first pass was 104 samples, later will use all 331 samples)
 d <- read.csv("data/metadata104.csv") %>%
   dplyr::select(-X, -Prefix) %>%
   mutate(sampleID = as.character(sampleID))
@@ -78,17 +99,13 @@ c <- d %>%
   dplyr::select(sampleID, latitude, longitude)
 #write.csv(c, "data/coords104.csv")
 
-# Elevation, slope, aspect were missing, so conferred for all using DEM
-#dem <- read.csv()
-
 meta <- d %>%
-  #left_join(., dem, by = "sampleID")
   mutate(Sample = paste("X", sampleID, sep = "")) %>%
   dplyr::select(Sample, everything())
 
 # Save metadata as text for mctoolsr import
 length(unique(meta$Sample))
-#write.table(meta, "data/metadata104wDEM.txt", row.names = F, sep = "\t")
+#write.table(meta, "data/metadata104.txt", row.names = F, sep = "\t")
 
 
 
@@ -148,14 +165,14 @@ d_env_nona <- d_env %>%
 
 # Corrplot
 m <- cor(d_env_nona)
-pdf("InitialFigs/Env_Corrplot.pdf", width = 7, height = 5)
+#pdf("InitialFigs/Env_Corrplot.pdf", width = 7, height = 5)
 corrplot(m, 
          method = "square",
          type = "lower",
          diag = FALSE,
          hclust.method = "ward.D2",
          tl.cex = 0.5)
-dev.off()
+#dev.off()
 
 # PCA with vectors
 d.pcx <- prcomp(d_env_nona)
@@ -178,7 +195,7 @@ d_env_nona$Axis01 <- vegan::scores(d.pcx)[,1]
 d_env_nona$Axis02 <- vegan::scores(d.pcx)[,2]
 d_env_nona$Axis01 <- d_env_nona$Axis01/sqrt(sum((d_env_nona$Axis01 - mean(d_env_nona$Axis01))^2))
 d_env_nona$Axis02 <- d_env_nona$Axis02/sqrt(sum((d_env_nona$Axis02 - mean(d_env_nona$Axis02))^2))
-pdf("InitialFigs/Env_PCA.pdf", width = 7, height = 5)
+#pdf("InitialFigs/Env_PCA.pdf", width = 7, height = 5)
 ggplot(d_env_nona, aes(Axis01, Axis02)) +
   geom_point(size = 3, alpha = 1, pch = 16) +
   geom_segment(data = vec.df,
@@ -192,12 +209,14 @@ ggplot(d_env_nona, aes(Axis01, Axis02)) +
   labs(x = PC1, 
        y = PC2) +
   theme_bw()
-dev.off()
+#dev.off()
 
 
 
 #### 3. Taxa ####
 # Use mTAGs to select abundant and ubiquitous soil bacteria
+# mTAGs identifies and classifies SSU sequences from the metaG
+# Note: Originally considered other taxa but then decided to focus on Bradyrhizobium
 
 #### _Setup ####
 # mTAGs output. Format for mctoolsr
@@ -238,7 +257,7 @@ sum(n$Sample %in% meta$Sample)
 
 # Import mctoolsr
 tax_table_fp <- "data/seqtab_wTax_mctoolsr_mtagProk.txt"
-map_fp <- "data/metadata104wDEM.txt"
+map_fp <- "data/metadata104.txt"
 input = load_taxa_table(tax_table_fp, map_fp) # 104 samples loaded
 
 # Filter Chloroplast, Mitochondria, Domain NA
@@ -287,7 +306,7 @@ summary(m1) # R2 = 0.11, p < 0.001
 m2 <- lm(shannon ~ AI, data = input_filt_rare$map_loaded)
 shapiro.test(m2$residuals)
 summary(m2) # R2 = 0.11, p < 0.001
-pdf("InitialFigs/Alpha_Rich_AI.pdf", width = 7, height = 5)
+#pdf("InitialFigs/Alpha_Rich_AI.pdf", width = 7, height = 5)
 ggplot(input_filt_rare$map_loaded, aes(AI, rich)) +
   geom_point(size = 3, alpha = 0.75, pch = 16, aes(colour = vegetation_type)) +
   geom_smooth(method = "lm") +
@@ -296,7 +315,7 @@ ggplot(input_filt_rare$map_loaded, aes(AI, rich)) +
        colour = "Vegetation") +
   scale_colour_viridis_d() +
   theme_bw()
-dev.off()
+#dev.off()
 ggplot(input_filt_rare$map_loaded, aes(AI, shannon)) +
   geom_point(size = 2, alpha = 0.75, pch = 16) +
   geom_smooth(method = "lm") +
@@ -311,10 +330,10 @@ d_env <- input_filt_rare$map_loaded %>%
   dplyr::select(all_of(env_vars)) %>%
   set_names(c("B", "Clay", "Conductivity", "Cu", "Fe", "Mn", "Zn", "Al", "Ca", "Mg",
               "K", "Na", "Lat", "Long", "NO3", "Org. C", "pH", "Colwell P",
-              "Sand", "Silt", "S", "Temp", "Precip", "Aridity")) %>%
+              "Sand", "Silt", "S", "H2O", "Temp", "Precip", "Aridity")) %>%
   dplyr::select(Clay, Silt, Sand, `Org. C`, NO3, `Colwell P`, pH, Conductivity,
                 B, Cu, Fe, Mn, Zn, Al, Ca, Mg, K, Na, S,
-                Lat, Long, Temp, Precip, Aridity)
+                Lat, Long, H2O, Temp, Precip, Aridity)
 set.seed(100)
 ef <- envfit(pcoa, d_env, permutations = 999, na.rm = TRUE)
 ef
@@ -332,7 +351,7 @@ pcoaA1 <- paste("PC1: ", round((eigenvals(pcoa)/sum(eigenvals(pcoa)))[1]*100, 1)
 pcoaA2 <- paste("PC2: ", round((eigenvals(pcoa)/sum(eigenvals(pcoa)))[2]*100, 1), "%")
 input_filt_rare$map_loaded$Axis01 <- vegan::scores(pcoa)[,1]
 input_filt_rare$map_loaded$Axis02 <- vegan::scores(pcoa)[,2]
-pdf("InitialFigs/Beta_Bray_PCoA.pdf", width = 7, height = 5)
+#pdf("InitialFigs/Beta_Bray_PCoA.pdf", width = 7, height = 5)
 ggplot(input_filt_rare$map_loaded, aes(Axis01, Axis02)) +
   geom_point(size = 3, pch = 16, alpha = 0.75, aes(colour = vegetation_type)) +
   geom_segment(data = vec.df,
@@ -351,7 +370,7 @@ ggplot(input_filt_rare$map_loaded, aes(Axis01, Axis02)) +
   theme(legend.position = "right",
         axis.title = element_text(face = "bold", size = 12), 
         axis.text = element_text(size = 10))
-dev.off()
+#dev.off()
 
 # Check taxa
 input_filt_rare$map_loaded$Sample = paste("X", input_filt_rare$map_loaded$sampleID, sep = "")
@@ -366,7 +385,9 @@ cliffplot_taxa_bars(input_filt_rare, 6, variable = "Sample")
 # Acidothermus, Bacillus, Bradyrhizobium, Bryobacter, 
 # Haliangium, Mycobacterium, Solibacter, Udaeobacter
 # New additions >95% prev and 0.3% abund are Conexibacter, Singulisphaera, Nocardioides 
-View(input_filt_rare$taxonomy_loaded)
+#View(input_filt_rare$taxonomy_loaded)
+
+# Get focal taxa and samples they are most abundant in to try StrainFinder
 tax_sum_gen <- summarize_taxonomy(input = input_filt_rare, 
                                   level = 6, 
                                   report_higher_tax = T,
@@ -444,7 +465,8 @@ genus_otus <- otu_prev_abund %>%
   summarise(n_OTUs = n()) %>%
   arrange(desc(n_OTUs))
 sum(genus_otus$n_OTUs)
-# 2781 OTUs across those 15 genera! Most Bryobacter.
+length(unique(genus_otus$Genus))
+# 2781 OTUs across those 40 genera! Most Bryobacter. Bradyrhizobium with 57.
 
 # Plot ubiq/abund genera over aridity gradient
 tax_sum_gen <- summarize_taxonomy(input = input_filt_rare, 
@@ -506,7 +528,7 @@ genus_genomes_2 <- genus_info %>%
 d_focal_long_used <- d_focal_long %>%
   filter(name %in% genus_genomes_2$Genus) %>%
   droplevels()
-pdf("InitialFigs/TopGenera_AI_75point1_used33.pdf", width = 12, height = 8)
+#pdf("InitialFigs/TopGenera_AI_75point1_used33.pdf", width = 12, height = 8)
 ggplot(d_focal_long_used, aes(AI, value)) +
   geom_point() +
   geom_smooth(data = subset(d_focal_long_used, name %in% lin$Genus),
@@ -519,7 +541,7 @@ ggplot(d_focal_long_used, aes(AI, value)) +
   theme_bw() +
   theme(strip.text = element_text(size = 6),
         axis.text = element_text(size = 6))
-dev.off()
+#dev.off()
 
 # Looping back here after running Sylph
 # Want to check OTU distributions for Bradyrhizobium, Streptomyces, Udaeobacter, Mycobacterium
@@ -550,9 +572,9 @@ g <- plot_ts_heatmap(mtag_brady_otu,
         axis.text.x = element_text(size = 4, vjust = 0.5),
         plot.title = element_text(hjust = 0.5))
 g$layers[[2]] <- NULL
-pdf("InitialFigs/otus_brady.pdf", width = 8, height = 8)
+#pdf("InitialFigs/otus_brady.pdf", width = 8, height = 8)
 g
-dev.off()
+#dev.off()
 
 mtag_strepto <- filter_taxa_from_input(input_filt_rare,
                                      taxa_to_keep = "Streptomyces",
@@ -581,9 +603,9 @@ g <- plot_ts_heatmap(mtag_strepto_otu,
         axis.text.x = element_text(size = 4, vjust = 0.5),
         plot.title = element_text(hjust = 0.5))
 g$layers[[2]] <- NULL
-pdf("InitialFigs/otus_strepto.pdf", width = 8, height = 8)
+#pdf("InitialFigs/otus_strepto.pdf", width = 8, height = 8)
 g
-dev.off()
+#dev.off()
 
 mtag_udaeo <- filter_taxa_from_input(input_filt_rare,
                                        taxa_to_keep = "Udaeobacter",
@@ -612,9 +634,9 @@ g <- plot_ts_heatmap(mtag_udaeo_otu,
         axis.text.x = element_text(size = 4, vjust = 0.5),
         plot.title = element_text(hjust = 0.5))
 g$layers[[2]] <- NULL
-pdf("InitialFigs/otus_udaeo.pdf", width = 8, height = 8)
+#pdf("InitialFigs/otus_udaeo.pdf", width = 8, height = 8)
 g
-dev.off()
+#dev.off()
 
 mtag_myco <- filter_taxa_from_input(input_filt_rare,
                                      taxa_to_keep = "Mycobacterium",
@@ -643,118 +665,11 @@ g <- plot_ts_heatmap(mtag_myco_otu,
         axis.text.x = element_text(size = 4, vjust = 0.5),
         plot.title = element_text(hjust = 0.5))
 g$layers[[2]] <- NULL
-pdf("InitialFigs/otus_myco.pdf", width = 8, height = 8)
+#pdf("InitialFigs/otus_myco.pdf", width = 8, height = 8)
 g
-dev.off()
-
-# Need to get the actual 16S sequence for the top rel abund OTU for those 4
-# Download an mTAGs fasta for a sample with all of them
-# Then blast Sylph genomes to see if the Sylph genome is same as the mTAGs OTU
-top4_otu <- tax_sum_otu %>%
-  filter(grepl("otu_24062|otu_187776|otu_97930|otu_41087", rownames(.)))
-# 401570, 401586, 401590
-
-#### _Strepto ####
-tax_sum_fam <- summarize_taxonomy(input = input_filt_rare, 
-                                  level = 5, 
-                                  report_higher_tax = F,
-                                  relative = T)
-fam_abund <- data.frame("Family" = rownames(tax_sum_fam),
-                        "MeanPercRelAbund" = rowMeans(tax_sum_fam)*100) %>%
-  arrange(desc(MeanPercRelAbund))
-# Streptosporangiaceae is the 68th most abundant family across the dataset
-# Mean % rel abund is 0.08788534 (cutoff was 0.1%)
-fam_prev <- data.frame("Family" = rownames(tax_sum_fam),
-                       "Absent" = rowSums(tax_sum_fam==0)) %>%
-  mutate(Present_n = ncol(tax_sum_fam) - Absent) %>%
-  mutate(Present_Perc = Present_n/ncol(tax_sum_fam)*100) %>%
-  arrange(desc(Present_Perc))
-# Streptosporangiaceae is the 37th most prevalent family. Present in 79/104 or 76% (cutoff was 75%)
-# Make OTU heatmap as for other genera of interest
-
-# Check Streptosporangiaceae OTUs
-tax_sum_otu <- summarize_taxonomy(input = input_filt_rare, 
-                                  level = 8, 
-                                  report_higher_tax = T,
-                                  relative = T)
-otu_abund <- data.frame("OTU" = rownames(tax_sum_otu),
-                        "MeanPercRelAbund" = rowSums(tax_sum_otu)) %>%
-  arrange(desc(MeanPercRelAbund))
-otu_prev <- data.frame("OTU" = rownames(tax_sum_otu),
-                       "Absent" = rowSums(tax_sum_otu==0)) %>%
-  mutate(Present_n = ncol(tax_sum_otu) - Absent) %>%
-  mutate(Present_Perc = Present_n/ncol(tax_sum_otu)*100) %>%
-  arrange(desc(Present_Perc))
-otu_prev_abund <- otu_abund %>%
-  left_join(., otu_prev, by = "OTU") %>%
-  separate(OTU, into = c("Domain", "Phylum", "Class", "Order", "Family", "Genus",
-                         "Species", "OTU"),
-           sep = "; ") %>%
-  filter(Family == "Streptosporangiaceae")
-family_otus <- otu_prev_abund %>%
-  group_by(Family) %>%
-  summarise(n_OTUs = n()) %>%
-  arrange(desc(n_OTUs))
-sum(family_otus$n_OTUs) # 44 Streptosporangiaceae OTUs
-
-mtag_sporang <- filter_taxa_from_input(input_filt_rare,
-                                       taxa_to_keep = "Streptosporangiaceae",
-                                       at_spec_level = 5)
-mtag_sporang$map_loaded$sampleID <- as.character(mtag_sporang$map_loaded$sampleID)
-mtag_sporang_otu <- summarize_taxonomy(input = mtag_sporang, 
-                                       level = 8, 
-                                       report_higher_tax = F,
-                                       relative = T) %>%
-  replace(is.na(.), 0)
-mtag_sporang_taxaSort <- data.frame(meanAbund = rowMeans(mtag_sporang_otu),
-                                    otu = rownames(mtag_sporang_otu)) %>%
-  arrange(meanAbund)
-mtag_sporang_aiSort <- mtag_sporang$map_loaded %>%
-  arrange(desc(AI))
-g <- plot_ts_heatmap(mtag_sporang_otu, 
-                     metadata_map = mtag_sporang$map_loaded,
-                     type_header = "sampleID",
-                     min_rel_abund = 0,
-                     custom_sample_order = mtag_sporang_aiSort$sampleID,
-                     custom_taxa_order = mtag_sporang_taxaSort$otu,
-                     remove_other = T) +
-  coord_flip() +
-  ggtitle("Streptosporangiaceae") +
-  theme(axis.text.y = element_text(size = 6),
-        axis.text.x = element_text(size = 4, vjust = 0.5),
-        plot.title = element_text(hjust = 0.5))
-g$layers[[2]] <- NULL
-pdf("InitialFigs/otus_sporang.pdf", width = 8, height = 8)
-g
-dev.off()
+#dev.off()
 
 
-
-#### _Brady ####
-# Subset to the 53 samples used for StrainFinder
-# Check which have the most Bradyrhizobium
-# Get MAGs from those
-# Goal: get a high quality MAG to compare to StrainFinder for validation
-nrow(input_filt_rare$map_loaded)
-nrow(d_brady)
-class(input_filt_rare$map_loaded$sampleID)
-input_filt_rare$map_loaded$sampleID_char <- as.character(input_filt_rare$map_loaded$sampleID)
-class(d_brady$sampleID)
-sum(d_brady$sampleID %in% input_filt_rare$map_loaded$sampleID_char)
-sum(input_filt_rare$map_loaded$sampleID_char %in% d_brady$sampleID)
-brady_mtags <- filter_data(input_filt_rare,
-                           filter_cat = "sampleID_char",
-                           keep_vals = d_brady$sampleID)
-tax_sum_gen <- summarize_taxonomy(input = brady_mtags, 
-                                  level = 6,
-                                  report_higher_tax = F,
-                                  relative = T)
-brady_abund53 <- as.data.frame(t(tax_sum_gen)) %>%
-  dplyr::select(Bradyrhizobium) %>%
-  mutate(sampleID = rownames(.)) %>%
-  arrange(desc(Bradyrhizobium))
-  
-  
 
 #### 4. Ref Genomes ####
 # Subset the GTDB full database to the genera of interest
@@ -834,7 +749,7 @@ gtdb_focal <- bacGT %>%
            sep = ";") %>%
   filter(Genus %in% gen_75_point1$Genus2)
 length(unique(gtdb_focal$Genus)) 
-# 35/40, missing Acidibacter, Tundrisphaera, Burkholderia-Caballeronia-Paraburkholderia, Actinomadura, P3OB-42
+# 35/40. Missing Acidibacter, Tundrisphaera, Burkholderia-Caballeronia-Paraburkholderia, Actinomadura, P3OB-42. Don't want to focus on those anyways since they are messy.
 
 # First check how many genomes per focal genus
 genus_genomes <- gtdb_focal %>%
@@ -859,7 +774,6 @@ genus_info <- gen_75_point1 %>%
   dplyr::select(Domain, Phylum, Class, Order, Family, Genus, 
                 MeanPercRelAbund, Present_Perc, n_OTUs, n_GTDB_genomes, n_GTDB_genomes_SILVAtax)
 # Export this for Noah
-#writexl::write_xlsx(genus_info, "data/genus_info.xlsx", format_headers = F)
 #writexl::write_xlsx(genus_info, "data/genus_info_75point1.xlsx", format_headers = F)
 
 # Now, need to get a list of those NCBI accessions to download those genomes.
@@ -887,27 +801,6 @@ sum(ncbi_accessions$ncbi_genbank_assembly_accession == "NA") # No NA string.
 length(unique(ncbi_accessions$ncbi_genbank_assembly_accession)) # 21471
 #write.table(ncbi_accessions, "data/ncbi_accessions.txt", sep = "\t", row.names = F, col.names = F)
 
-# Met with Mads Albertson and apparently Acidothermus could actually Streptosporangiaceae
-# So, download Streptosporangiaceae accessions and rerun Sylph
-gtdb_strep <- bacGT %>%
-  mutate(gtdb_taxonomy = gsub("d__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("p__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("c__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("o__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("f__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("g__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("s__", "", gtdb_taxonomy)) %>%
-  separate(gtdb_taxonomy, 
-           into = c("Domain", "Phylum", "Class", "Order", "Family", "Genus", "Species"),
-           sep = ";") %>%
-  filter(Family == "Streptosporangiaceae")
-ncbi_strep <- gtdb_strep %>%
-  dplyr::select(ncbi_genbank_assembly_accession)
-sum(is.na(ncbi_strep$ncbi_genbank_assembly_accession)) # No NA.
-sum(ncbi_strep$ncbi_genbank_assembly_accession == "NA") # No NA string.
-length(unique(ncbi_strep$ncbi_genbank_assembly_accession)) # 573
-#write.table(ncbi_strep, "data/ncbi_strep.txt", sep = "\t", row.names = F, col.names = F)
-
 
 
 #### _NCBI Download ####
@@ -915,6 +808,8 @@ length(unique(ncbi_strep$ncbi_genbank_assembly_accession)) # 573
 # Looped through this:
 # datasets download genome accession "${field1}" --filename "${field1}".zip --include genome
 # Should have 21471 genomes
+# This got a little messy since there were download issues so had to do multiple batches
+
 # First try downloaded 18670 genomes. What happenend to the other 2801!?
 batch1 <- read.delim("data/batch1.txt", header = F) %>%
   mutate(accession = gsub(".zip", "", V1))
@@ -945,8 +840,8 @@ batch4 <- ncbi_accessions %>%
 # Must write as .csv, then save as .txt (tab-delim), then dos2unix for it to work!
 #write.table(batch4, "data/ncbi_accessions_batch4.csv", sep = ",", row.names = F, col.names = F)
 
-# Unzipped, then extracted fastas, got up to 21467 .fna files
-# Need to get the last 5! Do manually.
+# Unzipped, then extracted fastas, got up to 21467 of 21471 .fna files
+# Need to get the last 4! Do manually.
 fasta_batch1and2 <- read.delim("data/fasta_batch1and2.txt", header = F) %>%
   mutate(accession = substr(V1, start = 1, stop = 15))
 last4 <- ncbi_accessions %>%
@@ -958,6 +853,7 @@ last4 <- ncbi_accessions %>%
 # Status: RefSeq GCF_026712145.1 is suppressed
 # Status: RefSeq GCF_026278285.1 is suppressed
 # Need to move on without those 4. Final number 21467.
+
 # See which taxa?
 gtdb_focal_removed <- gtdb_focal %>%
   filter(ncbi_genbank_assembly_accession %in% last4$ncbi_genbank_assembly_accession)
@@ -979,50 +875,6 @@ genus_info <- genus_info %>%
 
 
 
-#### __dRep ####
-# Also run Sylph those 33 genera from the dereplicated version of GTDB
-# See if results are the same, especially for Bacillus
-# This will be a subset of genomes already downloaded
-# Just need list of accessions to copy them into a new directory to sketch
-# 113104 total but 107235 bacteria
-bacGT_dRep <-bacGT %>%
-  filter(gtdb_representative == "t")
-gtdb_focal_dRep <- bacGT_dRep %>%
-  mutate(gtdb_taxonomy = gsub("d__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("p__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("c__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("o__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("f__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("g__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("s__", "", gtdb_taxonomy)) %>%
-  separate(gtdb_taxonomy, 
-           into = c("Domain", "Phylum", "Class", "Order", "Family", "Genus", "Species"),
-           sep = ";") %>%
-  filter(Genus %in% genus_genomes_2$Genus) %>%
-  filter(ncbi_genbank_assembly_accession %notin% last4$ncbi_genbank_assembly_accession)
-ncbi_accessions_dRep <- gtdb_focal_dRep %>%
-  dplyr::select(ncbi_genbank_assembly_accession)
-# That won't work though, because there is other info in the downloaded genome names
-# Get a list of the actual genome file names, then filter to the dRep
-# ls Ref_genomes > genome_names.txt
-genome_names <- read.delim("data/genome_names.txt", header = F) %>%
-  mutate(Accession = substr(V1, start = 1, stop = 15))
-genome_names_dRep <- genome_names %>%
-  filter(Accession %in% ncbi_accessions_dRep$ncbi_genbank_assembly_accession)
-#write.csv(genome_names_dRep$V1, "data/dRep_filenames.csv", row.names = F)
-#write.table(genome_names_dRep$V1, "data/dRep_filenames.txt", sep = "\t", row.names = F, col.names = F)
-# Don't forget dos2unix and to remove quotations!!
-# Ran the copy script, looks like 1 is missing
-dRep_moved <- read.delim("data/dRep_moved.txt", header = F)
-missing <- genome_names_dRep %>%
-  filter(V1 %notin% dRep_moved$V1)
-# Moved it manually. Proceed to Sylph on the dRep set.
-genus_genomes_dRep <- gtdb_focal_dRep %>%
-  group_by(Genus) %>%
-  summarise(n_GTDB_Genomes_dRep = n())
-
-
-
 #### _Sylph ####
 # Use Sylph to select reference genomes
 # In terminal run Sylph on the R1 and R2 QC reads
@@ -1035,9 +887,6 @@ genus_genomes_dRep <- gtdb_focal_dRep %>%
 # Need to get # genomes per sample and per focal genus
 gtdb_focal_final <- readRDS("data/gtdb_focal_final.rds")
 gtdb_ncbi_map <- gtdb_focal_final %>%
-  dplyr::select(Domain, Phylum, Class, Order, Family, Genus, Species, 
-                ncbi_genbank_assembly_accession)
-gtdb_ncbi_map_strep <- rbind(gtdb_focal_final, gtdb_strep) %>%
   dplyr::select(Domain, Phylum, Class, Order, Family, Genus, Species, 
                 ncbi_genbank_assembly_accession)
 meta_key <- meta %>%
@@ -1136,6 +985,31 @@ sylph_profile_genomes_select <- sylph_profile %>%
 # Should also check competitive coverM for these 16 though
 
 # Are those in the dRep set?
+bacGT_dRep <-bacGT %>%
+  filter(gtdb_representative == "t")
+gtdb_focal_dRep <- bacGT_dRep %>%
+  mutate(gtdb_taxonomy = gsub("d__", "", gtdb_taxonomy)) %>%
+  mutate(gtdb_taxonomy = gsub("p__", "", gtdb_taxonomy)) %>%
+  mutate(gtdb_taxonomy = gsub("c__", "", gtdb_taxonomy)) %>%
+  mutate(gtdb_taxonomy = gsub("o__", "", gtdb_taxonomy)) %>%
+  mutate(gtdb_taxonomy = gsub("f__", "", gtdb_taxonomy)) %>%
+  mutate(gtdb_taxonomy = gsub("g__", "", gtdb_taxonomy)) %>%
+  mutate(gtdb_taxonomy = gsub("s__", "", gtdb_taxonomy)) %>%
+  separate(gtdb_taxonomy, 
+           into = c("Domain", "Phylum", "Class", "Order", "Family", "Genus", "Species"),
+           sep = ";") %>%
+  filter(Genus %in% genus_genomes_2$Genus) %>%
+  filter(ncbi_genbank_assembly_accession %notin% last4$ncbi_genbank_assembly_accession)
+ncbi_accessions_dRep <- gtdb_focal_dRep %>%
+  dplyr::select(ncbi_genbank_assembly_accession)
+# That won't work though, because there is other info in the downloaded genome names
+# Get a list of the actual genome file names, then filter to the dRep
+# ls Ref_genomes > genome_names.txt
+genome_names <- read.delim("data/genome_names.txt", header = F) %>%
+  mutate(Accession = substr(V1, start = 1, stop = 15))
+genome_names_dRep <- genome_names %>%
+  filter(Accession %in% ncbi_accessions_dRep$ncbi_genbank_assembly_accession)
+
 sum(sylph_profile_genomes_select$Accession %in% ncbi_accessions_dRep$ncbi_genbank_assembly_accession)
 # 9. So 7 of those 16 are "strain level". I guess good to have both?
 # Which ones?
@@ -1154,6 +1028,7 @@ genome_names_top16 <- genome_names %>%
 # Now need to see if different genomes were hit for each genus across the gradient.
 # Or if genomes present in multiple samples spanned a gradient
 # Bradyrhizobium, Streptomyces, Udaeobacter, Mycobacterium present in >50 samples
+
 # Bradyrhizobium
 sylph_brady <- sylph_profile %>%
   dplyr::filter(Genus == "Bradyrhizobium")
@@ -1191,10 +1066,12 @@ pheatmap(sylph_brady_mat,
          annotation_col = ann_cols,
          main = "Bradyrhizobium",
          width = 8,
-         height = 8,
-         filename = "InitialFigs/Sylph_Brady.png")
-dev.off()
-dev.set(dev.next())
+         height = 8
+         #,
+         #filename = "InitialFigs/Sylph_Brady.png"
+         )
+#dev.off()
+#dev.set(dev.next())
 
 # Streptomyces
 sylph_strepto <- sylph_profile %>%
@@ -1233,10 +1110,12 @@ pheatmap(sylph_strepto_mat,
          annotation_col = ann_cols,
          main = "Streptomyces",
          width = 8,
-         height = 8,
-         filename = "InitialFigs/Sylph_Strepto.png")
-dev.off()
-dev.set(dev.next())
+         height = 8
+         #,
+         #filename = "InitialFigs/Sylph_Strepto.png"
+         )
+#dev.off()
+#dev.set(dev.next())
 
 # Udaeobacter
 sylph_udaeo <- sylph_profile %>%
@@ -1275,10 +1154,12 @@ pheatmap(sylph_udaeo_mat,
          annotation_col = ann_cols,
          main = "Udaeobacter",
          width = 8,
-         height = 8,
-         filename = "InitialFigs/Sylph_Udaeo.png")
-dev.off()
-dev.set(dev.next())
+         height = 8
+         #,
+         #filename = "InitialFigs/Sylph_Udaeo.png"
+         )
+#dev.off()
+#dev.set(dev.next())
 
 # Mycobacterium
 sylph_myco <- sylph_profile %>%
@@ -1317,387 +1198,13 @@ pheatmap(sylph_myco_mat,
          annotation_col = ann_cols,
          main = "Mycobacterium",
          width = 8,
-         height = 8,
-         filename = "InitialFigs/Sylph_Myco.png")
-dev.off()
-dev.set(dev.next())
+         height = 8
+         #,
+         #filename = "InitialFigs/Sylph_Myco.png"
+         )
+#dev.off()
+#dev.set(dev.next())
 
-
-
-#### __95% ANI dRep ####
-# Do the same as above but with the Sylph output from the dereplicated GTDB set (n = 3281)
-# Need to compare results from Sylph all vs. Sylph dRep
-sylph_profile_dRep <- read.delim("data/sylph_profile_ani95_dRep.tsv")
-length(unique(sylph_profile_dRep$Contig_name)) # 175 uniques
-length(unique(sylph_profile_dRep$Genome_file)) # 175 uniques
-length(unique(sylph_profile_dRep$Sample_file)) # 101 uniques - so 3 samples with none of these at 95% ANI.
-
-sylph_profile_dRep <- read.delim("data/sylph_profile_ani95_dRep.tsv") %>%
-  mutate(SampleID = gsub("/scratch/alpine/clbd1748/Australia/QC_reads/", "", Sample_file)) %>%
-  separate(SampleID, into = c("SampleID", "Junk1", "Junk2"), sep = "_") %>%
-  dplyr::select(-Junk1, -Junk2) %>%
-  mutate(Accession = substr(Genome_file, start = 53, stop = 67)) %>%
-  left_join(., gtdb_ncbi_map, by = c("Accession" = "ncbi_genbank_assembly_accession")) %>%
-  dplyr::select(-Sample_file, -Genome_file) %>%
-  dplyr::select(SampleID, Accession, Domain, Phylum, Class, Order, Family, Genus, Species,
-                everything())
-length(unique(sylph_profile_dRep$Genus)) # 14 genera (1 less)
-sylph_profile_dRep_samples <- sylph_profile_dRep %>%
-  group_by(SampleID) %>%
-  summarise(n_Genomes = n()) %>%
-  left_join(., meta_key, by = "SampleID")
-ggplot(sylph_profile_dRep_samples, aes(AI, n_Genomes)) +
-  geom_point(size = 2, pch = 16, alpha = 0.8) +
-  theme_bw()
-sylph_profile_dRep_genomes <- sylph_profile_dRep %>%
-  group_by(Genus, Accession) %>%
-  summarise(n_Samples_dRep = n())
-sylph_profile_dRep_genera <- sylph_profile_dRep %>%
-  group_by(Genus, Accession) %>%
-  summarise(n_Samples = n()) %>%
-  ungroup() %>%
-  group_by(Genus) %>%
-  summarise(n_Genomes_Sylph95_dRep = n())
-sylph_profile_dRep_genera_samples <- sylph_profile_dRep %>%
-  group_by(Genus, SampleID) %>%
-  summarise(n_Samples = n()) %>%
-  ungroup() %>%
-  group_by(Genus) %>%
-  summarise(n_Samples_Sylph95_dRep = n())
-# Add this info
-genus_info_dRep <- read_xlsx("data/genus_info_75point1.xlsx") %>%
-  left_join(., sylph_profile_dRep_genera, by = "Genus") %>%
-  left_join(., sylph_profile_dRep_genera_samples, by = "Genus") %>%
-  replace_na(list(n_Genomes_Sylph95_dRep = 0,
-                  n_Samples_Sylph95_dRep = 0))
-ggplot(genus_info_dRep, aes(n_Genomes_downloaded, n_Genomes_Sylph95)) +
-  geom_point(size = 2, pch = 16, alpha = 0.8) +
-  theme_bw()
-genus_info_dRep <- read_xlsx("data/genus_info_75point1.xlsx") %>%
-  left_join(., sylph_profile_dRep_genera, by = "Genus") %>%
-  left_join(., sylph_profile_dRep_genera_samples, by = "Genus") %>%
-  replace_na(list(n_Genomes_Sylph95_dRep = 0,
-                  n_Samples_Sylph95_dRep = 0)) %>%
-  dplyr::select(Genus, n_Genomes_Sylph95_dRep, n_Samples_Sylph95_dRep)
-
-# Merge Rep and dRep. Compare
-sylph_compare <- genus_info %>%
-  left_join(., genus_info_dRep, by = "Genus") %>%
-  left_join(., genus_genomes_dRep, by = "Genus")
-ggplot(sylph_compare, aes(n_GTDB_genomes, n_GTDB_Genomes_dRep)) +
-  geom_point(size = 2, pch = 16, alpha = 0.75) +
-  geom_smooth(method = "lm") +
-  theme_bw()
-ggplot(sylph_compare, aes(n_Genomes_Sylph95, n_Genomes_Sylph95_dRep)) +
-  geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
-  geom_point(size = 2, pch = 16, alpha = 0.75) +
-  geom_smooth(method = "lm") +
-  theme_bw()
-ggplot(sylph_compare, aes(n_Samples_Sylph95, n_Samples_Sylph95_dRep)) +
-  geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
-  geom_point(size = 2, pch = 16, alpha = 0.75) +
-  geom_smooth(method = "lm") +
-  theme_bw()
-
-# Write file
-sylph_compare_file <- sylph_compare %>%
-  filter(n_GTDB_genomes >= 2) %>%
-  dplyr::select(Genus, n_GTDB_genomes, n_GTDB_Genomes_dRep,
-                n_Samples_Sylph95, n_Samples_Sylph95_dRep,
-                n_Genomes_Sylph95, n_Genomes_Sylph95_dRep) %>%
-  arrange(desc(n_Samples_Sylph95))
-#writexl::write_xlsx(sylph_compare_file, "data/sylph_compare_drep.xlsx", format_headers = F)
-
-
-
-#### __95% ANI w Strep ####
-# Sylph output with the Streptosporangiaceae genomes included
-sylph_profile <- read.delim("data/sylph_profile_strep_ani95.tsv")
-nrow(sylph_profile) # 771 total rows
-length(unique(sylph_profile$Contig_name)) # 245 uniques
-length(unique(sylph_profile$Genome_file)) # 245 uniques
-length(unique(sylph_profile$Sample_file)) # 101 uniques - so 3 samples with none of these at 95% ANI.
-
-sylph_profile <- read.delim("data/sylph_profile_strep_ani95.tsv") %>%
-  mutate(SampleID = gsub("/scratch/alpine/clbd1748/Australia/QC_reads/", "", Sample_file)) %>%
-  separate(SampleID, into = c("SampleID", "Junk1", "Junk2"), sep = "_") %>%
-  dplyr::select(-Junk1, -Junk2) %>%
-  mutate(Accession = substr(Genome_file, start = 21, stop = 35)) %>%
-  left_join(., gtdb_ncbi_map_strep, by = c("Accession" = "ncbi_genbank_assembly_accession")) %>%
-  dplyr::select(-Sample_file, -Genome_file) %>%
-  dplyr::select(SampleID, Accession, Domain, Phylum, Class, Order, Family, Genus, Species,
-                everything())
-length(unique(sylph_profile$Genus)) # 26 genera
-unique(sylph_profile$Genus)
-length(unique(sylph_profile$Family)) # 14 families
-sylph_profile_strep <- sylph_profile %>%
-  filter(Family == "Streptosporangiaceae")
-nrow(sylph_profile_strep) # 57 total rows
-length(unique(sylph_profile_strep$Accession)) # 22 unique Streptosporangiaceae genomes found
-length(unique(sylph_profile_strep$SampleID)) # 38 unique samples
-sylph_profile_samples <- sylph_profile_strep %>%
-  group_by(SampleID) %>%
-  summarise(n_Genomes = n()) %>%
-  left_join(., meta_key, by = "SampleID")
-ggplot(sylph_profile_samples, aes(AI, n_Genomes)) +
-  geom_point(size = 2, pch = 16, alpha = 0.8) +
-  theme_bw()
-sylph_profile_genomes <- sylph_profile_strep %>%
-  group_by(Genus, Accession) %>%
-  summarise(n_Samples = n())
-# The most samples per individual accession is 9 for a Trebonia and a Palsa-504
-sylph_profile_genera <- sylph_profile_strep %>%
-  group_by(Genus, Accession) %>%
-  summarise(n_Samples = n()) %>%
-  ungroup() %>%
-  group_by(Genus) %>%
-  summarise(n_Genomes_Sylph95 = n())
-# There are 11 different Streptosporangiaceae genera represented!
-sylph_profile_genera_samples <- sylph_profile_strep %>%
-  group_by(Genus, SampleID) %>%
-  summarise(n_Samples = n()) %>%
-  ungroup() %>%
-  group_by(Genus) %>%
-  summarise(n_Samples_Sylph95 = n())
-# Palsa-504 in 14 samples, Trebonia in 11 samples
-# However, neither of these nor any Streptosporangiaceae were in the abund ubiq genera
-# Add this info
-genus_info <- read_xlsx("data/genus_info_75point1.xlsx") %>%
-  left_join(., sylph_profile_genera, by = "Genus") %>%
-  left_join(., sylph_profile_genera_samples, by = "Genus") %>%
-  replace_na(list(n_Genomes_Sylph95 = 0,
-                  n_Samples_Sylph95 = 0))
-ggplot(genus_info, aes(n_Genomes_downloaded, n_Genomes_Sylph95)) +
-  geom_point(size = 2, pch = 16, alpha = 0.8) +
-  theme_bw()
-
-
-
-#### __90% ANI ####
-sylph_query <- read.delim("data/sylph_query_ani90.tsv")
-length(unique(sylph_query$Contig_name)) # 16791 uniques
-length(unique(sylph_query$Genome_file)) # 16791 uniques
-length(unique(sylph_query$Sample_file)) # 104 uniques
-
-sylph_query <- read.delim("data/sylph_query_ani90.tsv") %>%
-  mutate(SampleID = gsub("/scratch/alpine/clbd1748/Australia/QC_reads/", "", Sample_file)) %>%
-  separate(SampleID, into = c("SampleID", "Junk1", "Junk2"), sep = "_") %>%
-  dplyr::select(-Junk1, -Junk2) %>%
-  mutate(Accession = substr(Genome_file, start = 48, stop = 62)) %>%
-  left_join(., gtdb_ncbi_map, by = c("Accession" = "ncbi_genbank_assembly_accession")) %>%
-  dplyr::select(-Sample_file, -Genome_file) %>%
-  dplyr::select(SampleID, Accession, Domain, Phylum, Class, Order, Family, Genus, Species,
-                everything())
-length(unique(sylph_query$Genus)) # 29 genera
-sylph_query_samples <- sylph_query %>%
-  group_by(SampleID) %>%
-  summarise(n_Genomes = n()) %>%
-  left_join(., meta_key, by = "SampleID")
-ggplot(sylph_query_samples, aes(AI, n_Genomes)) +
-  geom_point(size = 2, pch = 16, alpha = 0.8) +
-  theme_bw()
-sylph_query_genomes <- sylph_query %>%
-  group_by(Genus, Accession) %>%
-  summarise(n_Samples = n())
-sylph_query_genera <- sylph_query %>%
-  group_by(Genus, Accession) %>%
-  summarise(n_Samples = n()) %>%
-  ungroup() %>%
-  group_by(Genus) %>%
-  summarise(n_Genomes_Sylph90 = n())
-# Add this info
-genus_info <- genus_info %>%
-  left_join(., sylph_query_genera, by = "Genus") %>%
-  replace_na(list(n_Genomes_Sylph90 = 0))
-ggplot(genus_info, aes(n_Genomes_downloaded, n_Genomes_Sylph90)) +
-  geom_point(size = 2, pch = 16, alpha = 0.8) +
-  theme_bw()
-ggplot(genus_info, aes(n_Genomes_Sylph90, n_Genomes_Sylph95)) +
-  geom_point(size = 2, pch = 16, alpha = 0.8) +
-  theme_bw()
-ggplot(genus_info, aes(n_OTUs, n_GTDB_genomes)) +
-  geom_point(size = 2, pch = 16, alpha = 0.8) +
-  theme_bw()
-genus_info_top4 <- genus_info %>%
-  filter(Genus %in% c("Bradyrhizobium", "Streptomyces", "Udaeobacter", "Mycobacterium")) %>%
-  mutate(Present_Perc_OTU = Present_Perc,
-         Present_Perc_Sylph95 = n_Samples_Sylph95/104*100) %>% 
-  dplyr::select(Phylum, Genus, n_OTUs, Present_Perc_OTU, n_GTDB_genomes, 
-                n_Genomes_Sylph95, Present_Perc_Sylph95)
-
-
-
-#### ___Heatmaps ####
-# Now need to see if different genomes were hit for each genus across the gradient.
-# Or if genomes present in multiple samples spanned a gradient
-# Bradyrhizobium, Streptomyces, Udaeobacter, Mycobacterium present in >50 samples
-# Bradyrhizobium
-sylph_brady_dRep <- sylph_profile_dRep %>%
-  filter(Genus == "Bradyrhizobium")
-no_brady <- meta %>%
-  filter(sampleID %notin% sylph_brady_dRep$SampleID) %>%
-  mutate(SampleID = as.character(sampleID)) %>%
-  mutate(Accession = NA,
-         Eff_cov = 0) %>%
-  dplyr::select(SampleID, Accession, Eff_cov)
-sylph_brady_dRep <- sylph_profile_dRep %>%
-  filter(Genus == "Bradyrhizobium") %>%
-  dplyr::select(SampleID, Accession, Eff_cov) %>%
-  rbind(., no_brady) %>%
-  pivot_wider(names_from = Accession, values_from = Eff_cov) %>%
-  replace(is.na(.), 0) %>%
-  dplyr::select(-`NA`) %>%
-  left_join(., meta_AI, by = "SampleID") %>%
-  arrange(AI)
-sylph_brady_dRep_mat <- sylph_brady_dRep %>%
-  dplyr::select(-AI) %>%
-  column_to_rownames(var = "SampleID") %>%
-  t()
-sylph_brady_dRep_ai <- sylph_brady_dRep %>%
-  dplyr::select(SampleID, AI)
-ann_cols <- data.frame(row.names = colnames(sylph_brady_dRep_mat), 
-                       AI = sylph_brady_dRep_ai$AI)
-pheatmap(sylph_brady_dRep_mat,
-         border_color = NA,
-         scale = "none",
-         cluster_rows = T,
-         cluster_cols = F,
-         fontsize_row = 6,
-         fontsize_col = 6,
-         angle_col = 315,
-         annotation_col = ann_cols,
-         main = "Bradyrhizobium",
-         width = 8,
-         height = 8,
-         filename = "InitialFigs/sylph_brady_dRep.png")
-dev.off()
-dev.set(dev.next())
-
-# Streptomyces
-sylph_strepto_dRep <- sylph_profile_dRep %>%
-  filter(Genus == "Streptomyces")
-no_strepto <- meta %>%
-  filter(sampleID %notin% sylph_strepto_dRep$SampleID) %>%
-  mutate(SampleID = as.character(sampleID)) %>%
-  mutate(Accession = NA,
-         Eff_cov = 0) %>%
-  dplyr::select(SampleID, Accession, Eff_cov)
-sylph_strepto_dRep <- sylph_profile_dRep %>%
-  filter(Genus == "Streptomyces") %>%
-  dplyr::select(SampleID, Accession, Eff_cov) %>%
-  rbind(., no_strepto) %>%
-  pivot_wider(names_from = Accession, values_from = Eff_cov) %>%
-  replace(is.na(.), 0) %>%
-  dplyr::select(-`NA`) %>%
-  left_join(., meta_AI, by = "SampleID") %>%
-  arrange(AI)
-sylph_strepto_dRep_mat <- sylph_strepto_dRep %>%
-  dplyr::select(-AI) %>%
-  column_to_rownames(var = "SampleID") %>%
-  t()
-sylph_strepto_dRep_ai <- sylph_strepto_dRep %>%
-  dplyr::select(SampleID, AI)
-ann_cols <- data.frame(row.names = colnames(sylph_strepto_dRep_mat), 
-                       AI = sylph_strepto_dRep_ai$AI)
-pheatmap(sylph_strepto_dRep_mat,
-         border_color = NA,
-         scale = "none",
-         cluster_rows = T,
-         cluster_cols = F,
-         fontsize_row = 6,
-         fontsize_col = 6,
-         angle_col = 315,
-         annotation_col = ann_cols,
-         main = "Streptomyces",
-         width = 8,
-         height = 8,
-         filename = "InitialFigs/sylph_strepto_dRep.png")
-dev.off()
-dev.set(dev.next())
-
-# Udaeobacter
-sylph_udaeo_dRep <- sylph_profile_dRep %>%
-  filter(Genus == "Udaeobacter")
-no_udaeo <- meta %>%
-  filter(sampleID %notin% sylph_udaeo_dRep$SampleID) %>%
-  mutate(SampleID = as.character(sampleID)) %>%
-  mutate(Accession = NA,
-         Eff_cov = 0) %>%
-  dplyr::select(SampleID, Accession, Eff_cov)
-sylph_udaeo_dRep <- sylph_profile_dRep %>%
-  filter(Genus == "Udaeobacter") %>%
-  dplyr::select(SampleID, Accession, Eff_cov) %>%
-  rbind(., no_udaeo) %>%
-  pivot_wider(names_from = Accession, values_from = Eff_cov) %>%
-  replace(is.na(.), 0) %>%
-  dplyr::select(-`NA`) %>%
-  left_join(., meta_AI, by = "SampleID") %>%
-  arrange(AI)
-sylph_udaeo_dRep_mat <- sylph_udaeo_dRep %>%
-  dplyr::select(-AI) %>%
-  column_to_rownames(var = "SampleID") %>%
-  t()
-sylph_udaeo_dRep_ai <- sylph_udaeo_dRep %>%
-  dplyr::select(SampleID, AI)
-ann_cols <- data.frame(row.names = colnames(sylph_udaeo_dRep_mat), 
-                       AI = sylph_udaeo_dRep_ai$AI)
-pheatmap(sylph_udaeo_dRep_mat,
-         border_color = NA,
-         scale = "none",
-         cluster_rows = T,
-         cluster_cols = F,
-         fontsize_row = 6,
-         fontsize_col = 6,
-         angle_col = 315,
-         annotation_col = ann_cols,
-         main = "Udaeobacter",
-         width = 8,
-         height = 8,
-         filename = "InitialFigs/sylph_udaeo_dRep.png")
-dev.off()
-dev.set(dev.next())
-
-# Mycobacterium
-sylph_myco_dRep <- sylph_profile_dRep %>%
-  filter(Genus == "Mycobacterium")
-no_myco <- meta %>%
-  filter(sampleID %notin% sylph_myco_dRep$SampleID) %>%
-  mutate(SampleID = as.character(sampleID)) %>%
-  mutate(Accession = NA,
-         Eff_cov = 0) %>%
-  dplyr::select(SampleID, Accession, Eff_cov)
-sylph_myco_dRep <- sylph_profile_dRep %>%
-  filter(Genus == "Mycobacterium") %>%
-  dplyr::select(SampleID, Accession, Eff_cov) %>%
-  rbind(., no_myco) %>%
-  pivot_wider(names_from = Accession, values_from = Eff_cov) %>%
-  replace(is.na(.), 0) %>%
-  dplyr::select(-`NA`) %>%
-  left_join(., meta_AI, by = "SampleID") %>%
-  arrange(AI)
-sylph_myco_dRep_mat <- sylph_myco_dRep %>%
-  dplyr::select(-AI) %>%
-  column_to_rownames(var = "SampleID") %>%
-  t()
-sylph_myco_dRep_ai <- sylph_myco_dRep %>%
-  dplyr::select(SampleID, AI)
-ann_cols <- data.frame(row.names = colnames(sylph_myco_dRep_mat), 
-                       AI = sylph_myco_dRep_ai$AI)
-pheatmap(sylph_myco_dRep_mat,
-         border_color = NA,
-         scale = "none",
-         cluster_rows = T,
-         cluster_cols = F,
-         fontsize_row = 6,
-         fontsize_col = 6,
-         angle_col = 315,
-         annotation_col = ann_cols,
-         main = "Mycobacterium",
-         width = 8,
-         height = 8,
-         filename = "InitialFigs/sylph_myco_dRep.png")
-dev.off()
-dev.set(dev.next())
 
 
 #### _FastANI ####
@@ -1817,10 +1324,12 @@ pheatmap(compare_cm_sylph_mat,
          annotation_row = ann_rows,
          main = "Sylph vs. coverM",
          width = 8,
-         height = 8,
-         filename = "InitialFigs/compare_sylph_coverm.png")
-dev.off()
-dev.set(dev.next())
+         height = 8
+         #,
+         #filename = "InitialFigs/compare_sylph_coverm.png",
+         )
+#dev.off()
+#dev.set(dev.next())
 
 # Need to get list of samples to run StrainFinder
 # Run on samples with the highest coverage
@@ -2007,7 +1516,7 @@ cm_myco_ch_max <- cm_myco_ch %>%
   mutate(HalfMax = MaxCov/2)
 
 # How about setting the max at the first value that has only 10 or less bases
-# Use this! (Dylan Chivian confirmed it's a good idea)
+# Use this! (Dylan Chivian from KBase confirmed it's a good idea)
 cm_myco_ch_cut10 <- cm_myco_ch %>%
   group_by(SampleID) %>%
   filter(Bases < 10) %>%
@@ -2023,7 +1532,7 @@ myco_info <- myco_cov4 %>%
   left_join(cm_myco_ch_cut10, by = "SampleID") %>%
   filter(PercGenomeZero < 60) %>%
   arrange(AI)
-write_xlsx(myco_info, "data/Mycobacteria_StrainFinder_Info.xlsx", format_headers = F)
+#write_xlsx(myco_info, "data/Mycobacteria_StrainFinder_Info.xlsx", format_headers = F)
 
 ggplot(myco_info, aes(MeanCoverage, PercGenomeZero)) + 
   geom_point(size = 2, pch = 16, alpha = 0.8) +
@@ -2067,7 +1576,7 @@ cm_top4_ra_table <- cm_top4_ra %>%
 
 
 
-#### 5. Strain Genomics ####
+#### 5. Strain Info ####
 # Run StrainFinder on KBase
 # Use the mean coverage and coverage histogram to inform the parameters
 # Run for Bradyrhizobium on samples with mean coverage > 4
@@ -2116,7 +1625,7 @@ dev.off()
 strain_rel <- read_xlsx("data/Bradyrhizobium_StrainFinder_Info.xlsx") %>%
   dplyr::select(SampleID, Strain1, Strain2, Strain3, Strain4) %>%
   pivot_longer(cols = c("Strain1", "Strain2", "Strain3", "Strain4"))
-pdf("InitialFigs/Strains_RelAbund.pdf", width = 7, height = 5)
+#pdf("InitialFigs/Strains_RelAbund.pdf", width = 7, height = 5)
 ggplot(strain_rel, aes(name, value, group = SampleID)) +
   geom_point(size = 2, alpha = 0.75, pch = 16, 
              position = position_dodge(width = 0.2)) +
@@ -2127,7 +1636,7 @@ ggplot(strain_rel, aes(name, value, group = SampleID)) +
   theme_bw() +
   theme(axis.title = element_text(size = 14),
         axis.text = element_text(size = 12))
-dev.off()
+#dev.off()
 strain_rel_top2 <- strain_rel %>%
   filter(name %in% c("Strain1", "Strain2")) %>%
   group_by(SampleID) %>%
@@ -2145,7 +1654,7 @@ bac120 <- read.delim("data/brady_1081_markers_summary.tsv") %>%
   mutate(strainID = factor(strainID,
                            levels = c("Strain1", "Strain2", "Strain3", "Strain4",
                                        "GTDB")))
-pdf("InitialFigs/Strains_MissingBac120.pdf", width = 7, height = 5)
+#pdf("InitialFigs/Strains_MissingBac120.pdf", width = 7, height = 5)
 ggplot(bac120, aes(strainID, number_missing_genes)) +
   geom_boxplot(outlier.shape = NA) +
   geom_jitter(size = 2, alpha = 0.5, pch = 16, width = 0.25) +
@@ -2155,7 +1664,7 @@ ggplot(bac120, aes(strainID, number_missing_genes)) +
   theme_bw() +
   theme(axis.title = element_text(size = 14),
         axis.text = element_text(size = 12))
-dev.off()
+#dev.off()
 bac120_strains <- bac120 %>%
   filter(grepl("Strain_1|Strain_2", name))
 range(bac120_strains$number_missing_genes)
@@ -2266,57 +1775,6 @@ ani_106 <- read.delim("data/strainfinder_fastani.txt",
   mutate(sampleID = as.integer(sampleID))
 range(ani_106$ANI)
 
-# Map
-coords <- d_brady %>%
-  select(sampleID, latitude, longitude, AI)
-coords_trans <- st_as_sf(coords, 
-                         coords = c('longitude', 'latitude'), 
-                         crs=4326)
-ozmap()
-sf_oz <- ozmap("states")
-pdf("InitialFigs/Mapn53.pdf", width = 7, height = 5)
-ggplot(data = sf_oz) + 
-  geom_sf(fill = "grey80", color = "white") +
-  geom_sf(data = coords_trans,
-          aes(color = AI)) +
-  scale_color_gradient(low = "red", high = "blue") +
-  theme_minimal()
-dev.off()
-# Okay unfortunately these 53 with coverage > 4 are pretty clustered
-
-# Geographic distance
-dist.geog <- geosphere::distm(cbind(d_brady$longitude, d_brady$latitude),
-                              fun = distHaversine)
-rownames(dist.geog) <- d_brady$sampleID
-colnames(dist.geog) <- d_brady$sampleID
-dist.geog[upper.tri(dist.geog, diag = TRUE)] <- NA
-hist(dist.geog)
-
-# Aridity distance
-dist.ai <- as.matrix(dist(d_brady$AI, method = "euclidean", diag = FALSE, upper = FALSE))
-rownames(dist.ai) <- d_brady$sampleID
-colnames(dist.ai) <- d_brady$sampleID
-dist.ai[upper.tri(dist.ai, diag = TRUE)] <- NA
-hist(dist.ai)
-
-# Environmental distance
-d_brady_env <- d_brady %>%
-  select(sampleID, all_of(env_vars))
-n_na <- c()
-for (i in 1:ncol(d_brady_env)) {
-  n_na[i] <- sum(is.na(d_brady_env[,i]))
-}
-n_na
-d_brady_env <- d_brady_env %>%
-  select(where(~ all(!is.na(.)))) %>%
-  select(-sampleID, -latitude, -longitude)
-# Conductivity, nitrate, carbon, temp, precip, AI
-dist.env <- as.matrix(dist(d_brady_env, method = "euclidean", diag = FALSE, upper = FALSE))
-rownames(dist.env) <- d_brady$sampleID
-colnames(dist.env) <- d_brady$sampleID
-dist.env[upper.tri(dist.env, diag = TRUE)] <- NA
-hist(dist.env)
-
 
 
 #### _Pairwise ANI/16S ####
@@ -2393,6 +1851,10 @@ names(pw_16S) <- gsub("Brady_", "", names(pw_16S))
 rownames(pw_16S) <- gsub(".fna", "", rownames(pw_16S))
 rownames(pw_16S) <- gsub("Brady_", "", rownames(pw_16S))
 range(pw_16S) # 87.73% to 100%
+brady181_tree <- read.tree("data/brady181_fasttree_nogap.tree")
+brady181_tree$tip.label
+brady181_tree$tip.label <- gsub(".fna", "", brady181_tree$tip.label)
+brady181_tree$tip.label <- gsub("Brady_", "", brady181_tree$tip.label)
 strains_detected <- data.frame(GenomeID = brady181_tree$tip.label) %>%
   filter(grepl("Strain", GenomeID))
 ref_16S <- pw_16S %>%
@@ -2461,66 +1923,6 @@ otu_16S <- data.frame("Cutoff" = c(seq(87, 100, 1))) %>%
     length(unique(cutree(hclust_result, h = 0.01))),
     length(unique(cutree(hclust_result, h = 0.00)))))
 
-# 2. Igraph, adjacency matrix
-adj_87 <- (identity_matrix >= 0.87) * 1
-adj_88 <- (identity_matrix >= 0.88) * 1
-adj_97 <- (identity_matrix >= 0.97) * 1
-adj_99 <- (identity_matrix >= 0.99) * 1
-adj_100 <- (identity_matrix == 1.00) * 1
-diag(adj_87) <- 0
-diag(adj_88) <- 0
-diag(adj_97) <- 0
-diag(adj_99) <- 0
-diag(adj_99) <- 0
-graph_87 <- graph_from_adjacency_matrix(adj_87, mode = "undirected", diag = FALSE)
-graph_88 <- graph_from_adjacency_matrix(adj_88, mode = "undirected", diag = FALSE)
-graph_97 <- graph_from_adjacency_matrix(adj_97, mode = "undirected", diag = FALSE)
-graph_99 <- graph_from_adjacency_matrix(adj_99, mode = "undirected", diag = FALSE)
-graph_100 <- graph_from_adjacency_matrix(adj_100, mode = "undirected", diag = FALSE)
-OTUs_87 <- components(graph_87)$no
-OTUs_88 <- components(graph_88)$no
-OTUs_97 <- components(graph_97)$no
-OTUs_99 <- components(graph_99)$no
-OTUs_100 <- components(graph_100)$no
-
-# 3. Count unique taxa below cutoff. Add 1 to capture the rest.
-otu_16S <- as.data.frame(matrix(data = NA, nrow = 100, ncol = 2)) %>%
-  set_names(c("Cutoff", "Count"))
-for (i in 87:100) {
-  df <- long_16S %>%
-    filter(Value*100 < i) %>%
-    dplyr::select(Row, Column) %>%
-    unlist() %>%
-    unique()
-  otu_16S$Cutoff[i] <- i
-  otu_16S$Count[i] <- length(df) + 1
-}
-
-# 4. DECIPHER clustering
-library(DECIPHER)
-dna <- readDNAStringSet("data/combined_16S.fasta")
-clusters <- Clusterize(dna, 
-                       cutoff = c(0.00, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07,
-                                  0.08, 0.09, 0.10, 0.11, 0.12, 0.13), 
-                       processors = 4,
-                       method = "longest")
-otu_16S_decipher <- data.frame("Cutoff" = c(seq(87, 100, 1))) %>%
-  mutate("Count" = c(
-    length(unique(clusters$cluster_0_13)),
-    length(unique(clusters$cluster_0_12)),
-    length(unique(clusters$cluster_0_11)),
-    length(unique(clusters$cluster_0_1)),
-    length(unique(clusters$cluster_0_09)),
-    length(unique(clusters$cluster_0_08)),
-    length(unique(clusters$cluster_0_07)),
-    length(unique(clusters$cluster_0_06)),
-    length(unique(clusters$cluster_0_05)),
-    length(unique(clusters$cluster_0_04)),
-    length(unique(clusters$cluster_0_03)),
-    length(unique(clusters$cluster_0_02)),
-    length(unique(clusters$cluster_0_01)),
-    length(unique(clusters$cluster_0))))
-
 # Now also do ANI
 ani_181 <- read.delim("data/ANI_ani_181.txt") %>%
   column_to_rownames(var = "layers") %>%
@@ -2563,13 +1965,12 @@ otu_ANI <- data.frame("Cutoff" = c(seq(79, 100, 1))) %>%
     length(unique(cutree(hclust_result, h = 0.02))),
     length(unique(cutree(hclust_result, h = 0.01))),
     length(unique(cutree(hclust_result, h = 0.00)))))
-otu_comb <- rbind(otu_16S, otu_ANI)
 
 # Now just EMP 515-806 part of the 16S
 combined_16S <- microseq::readFasta("data/combined_16S.fasta")
 EMP <- combined_16S %>%
   mutate(Sequence = substr(Sequence, start = 515, stop = 806))
-microseq::writeFasta(EMP, "data/EMP_16S.fasta")
+#microseq::writeFasta(EMP, "data/EMP_16S.fasta")
 pw_16S_EMP <- read.table("data/pairwise_identity_16S_181_EMP.txt",
                      header = TRUE) %>%
   column_to_rownames(var = "ID")
@@ -2611,39 +2012,12 @@ otu_16S_EMP <- data.frame("Cutoff" = c(seq(84, 100, 1))) %>%
 otu_comb <- rbind(otu_16S_EMP, otu_16S, otu_ANI) %>%
   mutate(Metric = factor(Metric, levels = c("16S EMP", "16S", "ANI")))
 
-# Figure S5
+# Figure S8
 # Need to plot % identity on X and # comparisons on y
-# Draft 1
-label <- data.frame(x = c(97, 99, 100),
-                    y = c(2400, 2400, 2200),
-                    label = c("33 OTUs", "69 OTUs", "149 OTUs"))
-figS5 <- ggplot(long_16S, aes(x = Value*100)) +
-  geom_histogram(breaks = c(87, 88, 89, 90, 91, 92, 93, 94, 95, 96,
-                            97, 98, 99, 100, 101),
-                 closed = "left",
-                 fill = "grey80", colour = "black") +
-  stat_bin(aes(y= ..count.., label = ..count..), geom = "text", vjust = -0.5,
-           breaks = c(87, 88, 89, 90, 91, 92, 93, 94, 95, 96,
-                      97, 98, 99, 100, 101),
-           closed = "left") +
-  geom_vline(xintercept = 97, linetype = "dashed", color = "blue", linewidth = 1) +
-  geom_vline(xintercept = 99, linetype = "dashed", color = "blue", linewidth = 1) +
-  geom_vline(xintercept = 100, linetype = "dashed", color = "blue", linewidth = 1) +
-  geom_label(data = label, aes(x, y, label = label), size = 3) +
-  labs(x = "% 16S rRNA gene identity",
-       y = "# pairwise comparisons") +
-  scale_x_continuous(breaks = c(87, 88, 89, 90, 91, 92, 93, 94, 95, 96,
-                                97, 98, 99, 100, 101)) +
-  theme_bw() +
-  theme(axis.text = element_text(size = 10),
-        axis.title = element_text(size = 12))
-figS5
-
-# Draft 2
 facet_names <- c("16S EMP" = "515-806 16S rRNA gene (n OTUs)",
                  "16S" = "Full length 16S rRNA gene (n OTUs)",
                  "ANI" = "ANI (n genomes)")
-figS5 <- ggplot(otu_comb, aes(Cutoff, Count)) +
+figS8 <- ggplot(otu_comb, aes(Cutoff, Count)) +
   geom_bar(stat = "identity") +
   labs(x = "Similarity cutoff (%)",
        y = NULL) +
@@ -2652,12 +2026,12 @@ figS5 <- ggplot(otu_comb, aes(Cutoff, Count)) +
   theme(axis.text = element_text(size = 10),
         axis.title = element_text(size = 12),
         strip.text = element_text(size = 8))
-figS5
-pdf("FinalFigs/FigureS5.pdf", width = 7, height = 5)
-figS5
+figS8
+pdf("FinalFigs/FigureS8.pdf", width = 7, height = 5)
+figS8
 dev.off()
-png("FinalFigs/FigureS5.png", width = 7, height = 5, units = "in", res = 300)
-figS5
+png("FinalFigs/FigureS8.png", width = 7, height = 5, units = "in", res = 300)
+figS8
 dev.off()
 
 # Now check Angela's Australian 16S data
@@ -2672,3129 +2046,49 @@ ang_prev <- read.delim("~/Desktop/Fierer/Strains/australia_taxa_table.txt") %>%
 ang_brady <- ang %>%
   filter(grepl("Bradyrhizobium", taxonomy))
 
-# Now check LUCAS soil (Labouryie et al. 2023)
-lucas_taxonomy <- read.csv("~/Desktop/Fierer/Strains/LUCAS_Taxonomy.csv")
-lucas_otu <- read.csv("~/Desktop/Fierer/Strains/LUCAS_OTU_16S.csv")
-names(lucas_otu)
-head(lucas_otu$X)
-lucas_abund <- read.csv("~/Desktop/Fierer/Strains/LUCAS_OTU_16S.csv") %>%
-  mutate(Sum = rowSums(.[, 2:ncol(.)])) %>%
-  mutate(Prev = rowSums(.[, sapply(., is.numeric)] > 0)) %>%
-  arrange(desc(Sum)) %>%
-  left_join(., lucas_taxonomy, by = c("X" = "zOTU"))
-# 1 and 2 are Bradyrhizobiaceae, 3 and 4 are Bradyrhizobium
-lucas_prev <- read.csv("~/Desktop/Fierer/Strains/LUCAS_OTU_16S.csv") %>%
-  mutate(Sum = rowSums(.[, 2:ncol(.)])) %>%
-  mutate(Prev = rowSums(.[, sapply(., is.numeric)] > 0)) %>%
-  arrange(desc(Prev)) %>%
-  left_join(., lucas_taxonomy, by = c("X" = "zOTU"))
-# 2 of top 5 most prevalent zOTU are Brady
 
 
-# Old
-pw_16S <- read.table("data/pairwise_identity_matrix.txt",
-                     header = TRUE) %>%
-  column_to_rownames(var = "ID")
-names(pw_16S) <- gsub(".fna", "", names(pw_16S))
-names(pw_16S) <- gsub("Brady_", "", names(pw_16S))
-rownames(pw_16S) <- gsub(".fna", "", rownames(pw_16S))
-rownames(pw_16S) <- gsub("Brady_", "", rownames(pw_16S))
-
-# Strains to Ref
-ref_16S <- pw_16S %>%
-  dplyr::select(all_of(names(strains_ani)), Reference) %>%
-  filter(rownames(.) %in% c(names(strains_ani), "Reference")) %>%
-  t() %>%
-  as.data.frame() %>%
-  dplyr::select(all_of(names(strains_ani)), Reference) %>%
-  mutate_all(function(x) x * 100) %>%
-  filter(rownames(.) != "Reference") %>%
-  rownames_to_column(var = "sampleID") %>%
-  rename("rRNA16S" = "Reference") %>%
-  dplyr::select(sampleID, rRNA16S)
-sum(ref_ani$sampleID != ref_16S$sampleID)
-range(ref_16S$rRNA16S) # Range is 95.61231 to 97.18402
-hist(ref_16S$rRNA16S)
-
-d_pw <- d_pw %>% 
-  left_join(., ref_16S, by = "sampleID")
-ggplot(d_pw, aes(AI, rRNA16S)) +
-  geom_point(size = 2, alpha = 0.75, pch = 16) +
-  labs(x = "drier <= Aridity index => wetter",
-       y = "16S % ID to reference") +
-  theme_bw()
-
-# Strains
-strains_16S <- pw_16S %>%
-  dplyr::select(all_of(names(strains_ani))) %>%
-  filter(rownames(.) %in% names(strains_ani)) %>%
-  t() %>%
-  as.data.frame() %>%
-  dplyr::select(all_of(names(strains_ani))) %>%
-  mutate_all(function(x) x * 100)
-dist.16S <- as.matrix(strains_16S)
-dist.16S[upper.tri(dist.16S, diag = TRUE)] <- NA
-hist(dist.16S)
-range(dist.16S, na.rm = TRUE) # Range is 96.59463 99.73805
-
-
-
-#### __Test ####
-# Mantel
-mantel(dist.ani, dist.ai, method = "pearson", permutations = 2000)
-mantel(dist.ani, dist.env, method = "pearson", permutations = 2000)
-mantel(dist.ani, dist.geog, method = "pearson", permutations = 2000)
-mantel(dist.ani, dist.ai, method = "spearman", permutations = 2000)
-mantel(dist.ani, dist.env, method = "spearman", permutations = 2000)
-mantel(dist.ani, dist.geog, method = "spearman", permutations = 2000)
-
-mantel(dist.16S, dist.ai, method = "pearson", permutations = 2000)
-mantel(dist.16S, dist.env, method = "pearson", permutations = 2000)
-mantel(dist.16S, dist.geog, method = "pearson", permutations = 2000)
-mantel(dist.16S, dist.ai, method = "spearman", permutations = 2000)
-mantel(dist.16S, dist.env, method = "spearman", permutations = 2000)
-mantel(dist.16S, dist.geog, method = "spearman", permutations = 2000)
-
-mantel(dist.16S, dist.ani, method = "pearson", permutations = 2000)
-mantel(dist.16S, dist.ani, method = "spearman", permutations = 2000)
-
-# DBRDA
-dist.16S.d <- as.dist(dist.16S)
-mod0 <- dbrda(dist.16S.d ~ 1, d_brady_env)  # Model with intercept only
-mod1 <- dbrda(dist.16S.d ~ ., d_brady_env)  # Model with all explanatory variables
-mod <- ordistep(mod0, scope = formula(mod1))
-mod$anova # None
-
-dist.ani.d <- as.dist(dist.ani)
-mod0 <- dbrda(dist.ani.d ~ 1, d_brady_env)  # Model with intercept only
-mod1 <- dbrda(dist.ani.d ~ ., d_brady_env)  # Model with all explanatory variables
-mod <- ordistep(mod0, scope = formula(mod1))
-mod$anova # None
-
-# Lengthen so we have all 1378 points
-vec.ani <- as.vector(dist.ani)
-vec.16S <- as.vector(dist.16S)
-vec.geog <- as.vector(dist.geog)
-vec.ai <- as.vector(dist.ai)
-vec.env <- as.vector(dist.env)
-mats <- data.frame(ANI = vec.ani,
-                   rRNA16S = vec.16S,
-                   Geog = vec.geog,
-                   AI = vec.ai,
-                   Env = vec.env) %>%
-  drop_na()
-
-# Test correlations, linear regressions, polynomial regressions (not valid though!)
-cor.test(mats$ANI, mats$Geog, method = "pearson")
-cor.test(mats$ANI, mats$AI, method = "pearson")
-cor.test(mats$ANI, mats$Env, method = "pearson")
-cor.test(mats$ANI, mats$Geog, method = "spearman")
-cor.test(mats$ANI, mats$AI, method = "spearman")
-cor.test(mats$ANI, mats$Env, method = "spearman")
-summary(lm(ANI ~ Geog, data = mats))
-summary(lm(ANI ~ AI, data = mats))
-summary(lm(ANI ~ Env, data = mats))
-summary(lm(ANI ~ poly(Geog, 2, raw = TRUE), data = mats))
-summary(lm(ANI ~ poly(AI, 2, raw = TRUE), data = mats))
-summary(lm(ANI ~ poly(Env, 2, raw = TRUE), data = mats))
-
-cor.test(mats$rRNA16S, mats$Geog, method = "pearson")
-cor.test(mats$rRNA16S, mats$AI, method = "pearson")
-cor.test(mats$rRNA16S, mats$Env, method = "pearson")
-cor.test(mats$rRNA16S, mats$Geog, method = "spearman")
-cor.test(mats$rRNA16S, mats$AI, method = "spearman")
-cor.test(mats$rRNA16S, mats$Env, method = "spearman")
-summary(lm(rRNA16S ~ Geog, data = mats))
-summary(lm(rRNA16S ~ AI, data = mats))
-summary(lm(rRNA16S ~ Env, data = mats))
-summary(lm(rRNA16S ~ poly(Geog, 2, raw = TRUE), data = mats))
-summary(lm(rRNA16S ~ poly(AI, 2, raw = TRUE), data = mats))
-summary(lm(rRNA16S ~ poly(Env, 2, raw = TRUE), data = mats))
-
-
-
-#### __Plot ####
-ggplot(mats, aes(Geog, ANI)) +
-  geom_point(size = 2, alpha = 0.25, pch = 16) +
-  geom_smooth(method = "lm", linetype = "dashed", se = FALSE) +
-  labs(x = "Geographic distance (m)",
-       y = "ANI (%)") +
-  theme_bw()
-ggplot(mats, aes(AI, ANI)) +
-  geom_point(size = 2, alpha = 0.25, pch = 16) +
-  geom_smooth(method = "lm", linetype = "dashed", se = FALSE) +
-  labs(x = "Aridity distance (Euclidean)",
-       y = "ANI (%)") +
-  theme_bw()
-ggplot(mats, aes(Env, ANI)) +
-  geom_point(size = 2, alpha = 0.25, pch = 16) +
-  geom_smooth(method = "lm", linetype = "dashed", se = FALSE) +
-  labs(x = "Environmental distance (Euclidean)",
-       y = "ANI (%)") +
-  theme_bw()
-
-ggplot(mats, aes(Geog, rRNA16S)) +
-  geom_point(size = 2, alpha = 0.25, pch = 16) +
-  geom_smooth(method = "lm", linetype = "dashed", se = FALSE) +
-  labs(x = "Geographic distance (m)",
-       y = "16S (% ID)") +
-  theme_bw()
-ggplot(mats, aes(AI, rRNA16S)) +
-  geom_point(size = 2, alpha = 0.25, pch = 16) +
-  geom_smooth(method = "lm", linetype = "dashed", se = FALSE) +
-  labs(x = "Aridity distance (Euclidean)",
-       y = "16S (% ID)") +
-  theme_bw()
-ggplot(mats, aes(Env, rRNA16S)) +
-  geom_point(size = 2, alpha = 0.25, pch = 16) +
-  geom_smooth(method = "lm", linetype = "dashed", se = FALSE) +
-  labs(x = "Environmental distance (Euclidean)",
-       y = "16S (% ID)") +
-  theme_bw()
-
-# Multipanel Plot
-facet_names <- c("AI" = "Aridity Index",
-                 "Env" = "Env. (Euclidean)",
-                 "Geog" = "Geog. (m)")
-mats_long <- mats %>%
-  pivot_longer(cols = c("Geog", "AI", "Env"))
-pdf("InitialFigs/ANI_dist.pdf", width = 7, height = 4)
-ggplot(mats_long, aes(value, ANI)) +
-  geom_point(size = 1.5, alpha = 0.2, pch = 16) +
-  geom_smooth(method = "lm", linetype = "dashed", se = FALSE) +
-  facet_wrap(~ name, ncol = 3, scales = "free_x", labeller = as_labeller(facet_names)) +
-  labs(x = "Distance",
-       y = "ANI (%)") +
-  theme_bw() +
-  theme(axis.title = element_text(size = 14),
-        axis.text.y = element_text(size = 12),
-        axis.text.x = element_text(size = 8),
-        strip.text = element_text(size = 12),
-        panel.spacing.x = unit(c(1, 1), "lines"))
-dev.off()
-
-pdf("InitialFigs/16S_dist.pdf", width = 7, height = 4)
-ggplot(mats_long, aes(value, rRNA16S)) +
-  geom_point(size = 1.5, alpha = 0.2, pch = 16) +
-  geom_smooth(method = "lm", linetype = "dashed", se = FALSE) +
-  facet_wrap(~ name, ncol = 3, scales = "free_x", labeller = as_labeller(facet_names)) +
-  labs(x = "Distance",
-       y = "16S (% ID)") +
-  theme_bw() +
-  theme(axis.title = element_text(size = 14),
-        axis.text.y = element_text(size = 12),
-        axis.text.x = element_text(size = 8),
-        strip.text = element_text(size = 12),
-        panel.spacing.x = unit(c(1, 1), "lines"))
-dev.off()
-
-facet_names <- c("AI" = "Aridity Index",
-                 "Env" = "Env. (Euclidean)",
-                 "Geog" = "Geog. (m)",
-                 "ANI" = "ANI",
-                 "rRNA16S" = "16S")
-mats_long1 <- mats_long %>%
-  mutate(Dataset = "ANI") %>%
-  dplyr::select(-rRNA16S) %>%
-  rename("y" = "ANI")
-mats_long2 <- mats_long %>%
-  mutate(Dataset = "rRNA16S") %>%
-  dplyr::select(-ANI) %>%
-  rename("y" = "rRNA16S")
-mats_long_both <- rbind(mats_long1, mats_long2)
-pdf("InitialFigs/Dist_ANI_16S.pdf", width = 7, height = 6)
-ggplot(mats_long_both, aes(value, y)) +
-  geom_point(size = 1.5, alpha = 0.2, pch = 16) +
-  geom_smooth(method = "lm", linetype = "dashed", se = FALSE) +
-  facet_grid(Dataset ~ name, scales = "free_x", labeller = as_labeller(facet_names)) +
-  labs(x = "Distance",
-       y = "% ID") +
-  theme_bw() +
-  theme(axis.title = element_text(size = 14),
-        axis.text.y = element_text(size = 12),
-        axis.text.x = element_text(size = 8),
-        strip.text = element_text(size = 12),
-        panel.spacing.x = unit(c(1, 1), "lines"))
-dev.off()
-
-# Also ANI vs 16S
-mantel(dist.ani, dist.16S, method = "pearson", permutations = 2000)
-mantel(dist.ani, dist.16S, method = "spearman", permutations = 2000)
-cor.test(mats$ANI, mats$rRNA16S, method = "pearson")
-cor.test(mats$ANI, mats$rRNA16S, method = "spearman")
-summary(lm(ANI ~ rRNA16S, data = mats))
-pdf("InitialFigs/ANI_16S.pdf", width = 7, height = 5)
-ggplot(mats, aes(rRNA16S, ANI)) +
-  # geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
-  geom_point(size = 2, alpha = 0.25, pch = 16) +
-  geom_smooth(method = "lm", se = FALSE) +
-  # xlim(95, 100) +
-  # ylim(95, 100) +
-  labs(x = "16S % ID",
-       y = "ANI (%)") +
-  theme_bw()
-dev.off()
-
-# PCoA with vectors
-pcoa_16S <- cmdscale(dist.16S.d, k = nrow(d_brady) - 1, eig = T)
-set.seed(100)
-ef_16S <- envfit(pcoa_16S, d_brady_env, permutations = 999, na.rm = TRUE)
-ef_16S # None
-ordiplot(pcoa_16S)
-plot(ef_16S, cex = 0.5)
-multiplier_16S <- ordiArrowMul(ef_16S)
-vec.df_16S <- as.data.frame(ef_16S$vectors$arrows*sqrt(ef_16S$vectors$r)) %>%
-  mutate(Dim1 = Dim1 * multiplier_16S,
-         Dim2 = Dim2 * multiplier_16S) %>%
-  mutate(variables = rownames(.)) %>%
-  #filter(ef_16S$vectors$pvals < 0.05) %>%
-  mutate(shortnames = c("Conductivity", "NO3", "Org. C", "Temp", "Precip", "AI"))
-pcoaA1_16S <- paste("PC1: ", round((eigenvals(pcoa_16S)/sum(eigenvals(pcoa_16S)))[1]*100, 1), "%")
-pcoaA2_16S <- paste("PC2: ", round((eigenvals(pcoa_16S)/sum(eigenvals(pcoa_16S)))[2]*100, 1), "%")
-d_brady$Axis01 <- vegan::scores(pcoa_16S)[,1]
-d_brady$Axis02 <- vegan::scores(pcoa_16S)[,2]
-pdf("InitialFigs/PCoA_16S.pdf", width = 7, height = 5)
-ggplot(d_brady, aes(Axis01, Axis02)) +
-  geom_point(size = 3, pch = 16, alpha = 0.5) +
-  geom_segment(data = vec.df_16S,
-               aes(x = 0, xend = Dim1, y = 0, yend = Dim2),
-               arrow = arrow(length = unit(0.35, "cm")),
-               colour = "gray", alpha = 0.6,
-               inherit.aes = FALSE) + 
-  geom_text(data = vec.df_16S,
-            aes(x = Dim1, y = Dim2, label = shortnames),
-            size = 3, color = "red", fontface = "bold") +
-  labs(x = pcoaA1_16S, 
-       y = pcoaA2_16S,
-       colour = "Site") +
-  theme_bw() +  
-  theme(legend.position = "right",
-        axis.title = element_text(face = "bold", size = 12), 
-        axis.text = element_text(size = 10))
-dev.off()
-
-pcoa_ani <- cmdscale(dist.ani.d, k = nrow(d_brady) - 1, eig = T)
-set.seed(100)
-ef_ani <- envfit(pcoa_ani, d_brady_env, permutations = 999, na.rm = TRUE)
-ef_ani # None
-ordiplot(pcoa_ani)
-plot(ef_ani, cex = 0.5)
-multiplier_ani <- ordiArrowMul(ef_ani)
-vec.df_ani <- as.data.frame(ef_ani$vectors$arrows*sqrt(ef_ani$vectors$r)) %>%
-  mutate(Dim1 = Dim1 * multiplier_ani,
-         Dim2 = Dim2 * multiplier_ani) %>%
-  mutate(variables = rownames(.)) %>%
-  #filter(ef_ani$vectors$pvals < 0.05) %>%
-  mutate(shortnames = c("Conductivity", "NO3", "Org. C", "Temp", "Precip", "AI"))
-pcoaA1_ani <- paste("PC1: ", round((eigenvals(pcoa_ani)/sum(eigenvals(pcoa_ani)))[1]*100, 1), "%")
-pcoaA2_ani <- paste("PC2: ", round((eigenvals(pcoa_ani)/sum(eigenvals(pcoa_ani)))[2]*100, 1), "%")
-d_brady$Axis01 <- vegan::scores(pcoa_ani)[,1]
-d_brady$Axis02 <- vegan::scores(pcoa_ani)[,2]
-pdf("InitialFigs/PCoA_ani.pdf", width = 7, height = 5)
-ggplot(d_brady, aes(Axis01, Axis02)) +
-  geom_point(size = 3, pch = 16, alpha = 0.5) +
-  geom_segment(data = vec.df_ani,
-               aes(x = 0, xend = Dim1, y = 0, yend = Dim2),
-               arrow = arrow(length = unit(0.35, "cm")),
-               colour = "gray", alpha = 0.6,
-               inherit.aes = FALSE) + 
-  geom_text(data = vec.df_ani,
-            aes(x = Dim1, y = Dim2, label = shortnames),
-            size = 3, color = "red", fontface = "bold") +
-  labs(x = pcoaA1_ani, 
-       y = pcoaA2_ani,
-       colour = "Site") +
-  theme_bw() +  
-  theme(legend.position = "right",
-        axis.title = element_text(face = "bold", size = 12), 
-        axis.text = element_text(size = 10))
-dev.off()
-
-
-
-#### _Genes ####
-# Import DRAM annotation for the strain genomes
-# Get number of KO per strain genome
-# Compute shared and unique KOs
-# Make complex upset plot
-a <- read.delim("~/Desktop/Fierer/Strains/Australia/Brady_annotations.tsv") %>%
-  mutate(fasta = gsub("-Reads_1-Strain_1.Genome", "", fasta)) %>%
-  mutate(fasta = gsub("Brady_", "", fasta)) %>%
-  dplyr::select(fasta, ko_id, kegg_hit) %>%
-  rename(sampleID = fasta) %>%
-  filter(ko_id != "")
-length(unique(a$ko_id))
-ko_func <- a %>%
-  dplyr::select(ko_id, kegg_hit) %>%
-  group_by(ko_id) %>%
-  slice_head(n = 1) %>%
-  ungroup()
-ko_count <- a %>%
-  group_by(sampleID) %>%
-  summarize(count = n()) %>%
-  left_join(., d_AI, by = "sampleID")
-hist(ko_count$count)
-min(ko_count$count) # 3423, including copies!
-max(ko_count$count) # 3479, including copies!
-ggplot(ko_count, aes(AI, count)) +
-  geom_point(size = 2, alpha = 0.5, pch = 16) +
-  geom_smooth() +
-  theme_bw()
-
-brady_mat <- a %>%
-  select(sampleID, ko_id) %>%
-  rename(name = ko_id) %>%
-  mutate(value = 1) %>%
-  group_by(sampleID, name) %>%
-  slice_head(n = 1) %>%
-  pivot_wider() %>%
-  replace(is.na(.), 0) %>%
-  column_to_rownames(var = "sampleID") %>%
-  t() %>%
-  as.data.frame()
-ko_count_uniq <- data.frame("count" = colSums(brady_mat))
-# 2187 total unique KOs
-# 1544 in all, 309 all but 1, 17 1
-# 17 with 1, that's 13 strains, 13 with 1 unique and 4 with 2 unique
-2187-1544-309-17 # 317 in all other combinations
-# Can also just plot this info
-int_info <- data.frame("Strains" = c("53", "52", "2-51", "1"),
-                       "KOs" = c(1544, 309, 317, 17))
-ggplot(int_info, aes(Strains, KOs)) +
-  geom_bar(stat = "identity") +
-  labs(x = "Number of strains",
-       y = "Number of KOs") +
-  theme_bw()
-# Or even get info for all combinations 1-53
-int_info_all <- data.frame(Strains = seq(1:53)) %>%
-  mutate(Strains = factor(Strains,
-                          levels = seq(1:53))) %>%
-  mutate(KOs = "NA")
-for (i in 1:53) {
-  k <- brady_mat %>%
-    mutate(sum = rowSums(.)) %>%
-    filter(sum == i) %>%
-    select(-sum)
-  int_info_all$KOs[i] <- nrow(k)
-}
-int_info_all$KOs <- as.integer(int_info_all$KOs)
-pdf("InitialFigs/Genes_SharedKOs.pdf", width = 7, height = 4)
-ggplot(int_info_all, aes(Strains, KOs)) +
-  geom_bar(stat = "identity") +
-  geom_text(aes(Strains, KOs + 20, label = KOs), size = 2) +
-  labs(x = "Number of strains",
-       y = "Number of shared KOs") +
-  scale_y_continuous(expand = c(0.01, 0.01)) +
-  scale_x_discrete(expand = c(0.01, 0.5)) +
-  theme_bw() +
-  theme(axis.text.x = element_text(size = 6))
-dev.off()
-
-# Get KOs in all 53, in 52/53, in 1
-k53 <- brady_mat %>%
-  mutate(sum = rowSums(.)) %>%
-  filter(sum == 53) %>%
-  select(-sum)
-k52 <- brady_mat %>%
-  mutate(sum = rowSums(.)) %>%
-  filter(sum == 52) %>%
-  select(-sum)
-k1 <- brady_mat %>%
-  mutate(sum = rowSums(.)) %>%
-  filter(sum == 1) %>%
-  select(-sum)
-kotab <- rbind(k1, 
-               #k52, 
-               k53)
-# Upset plot (order by AI, remember high AI is wet)
-d_AI_ordered <- d_AI %>%
-  arrange(AI) %>%
-  filter(sampleID %in% names(kotab))
-kotab_reorder <- kotab %>%
-  dplyr::select(all_of(d_AI_ordered$sampleID))
-up1 <- upset(kotab,
-             intersect = names(kotab_reorder),
-             sort_sets = FALSE,
-             set_sizes = FALSE,
-             height_ratio = 4,
-             name = NULL,
-             base_annotations = list('KOs' = intersection_size(counts=T)),
-             themes = upset_modify_themes(
-               list('intersections_matrix' = theme(axis.text.y = element_text(margin = margin(l = -40),
-                                                                              face = "italic"),
-                                                   axis.title.x = element_text(size = 16, hjust = 0.5),
-                                                   plot.margin = margin(l = 30)))))
-pdf("InitialFigs/Genes_Upset.pdf", width = 6, height = 10)
-up1
-dev.off()
-
-# Check actual functions in the 17 KOs in just 1 strain
-k1_func <- a %>%
-  subset(ko_id %in% rownames(k1))
-
-# Need to do some logistic regression
-# Which KOs are significantly more likely to present based on AI?
-# Can't do if only 1's
-brady_mat2 <- brady_mat %>%
-  mutate(tot = rowSums(.)) %>%
-  filter(tot != 53) %>%
-  dplyr::select(-tot)
-brady_mat_reorder <- brady_mat2 %>%
-  dplyr::select(all_of(d_AI_ordered$sampleID))
-sum(names(brady_mat_reorder) != d_AI_ordered$sampleID)
-# Loop through each KO, perform logistic regression with AI
-brady_mat_reorder_t <- as.data.frame(t(brady_mat_reorder))
-sigKOs <- data.frame(KO = names(brady_mat_reorder_t),
-                     p = NA,
-                     PseudoR2 = NA)
-for (i in 1:ncol(brady_mat_reorder_t)) {
-  m <- glm(brady_mat_reorder_t[,i] ~ d_AI_ordered$AI, family = "binomial")
-  r <- nagelkerke(m, null = NULL, restrictNobs = FALSE)
-  sigKOs$p[i] <- coef(summary(m))[2,4]
-  sigKOs$PseudoR2[i] <- r$Pseudo.R.squared.for.model.vs.null[3]
-}
-sigKOs$Pfdr <- p.adjust(sigKOs$p, method = "fdr")
-sigKOs$Pbon <- p.adjust(sigKOs$p, method = "bonferroni")
-brady_mat3 <- brady_mat %>%
-  mutate(tot = rowSums(.)) %>%
-  filter(rownames(.) %in% sigKOs$KO) %>%
-  rownames_to_column(var = "KO") %>%
-  dplyr::select(KO, tot)
-sigKOs <- sigKOs %>%
-  filter(p < 0.05) %>%
-  dplyr::select(-Pfdr, -Pbon) %>%
-  left_join(., ko_func, by = c("KO" = "ko_id")) %>%
-  left_join(., brady_mat3, by = "KO")
-sigKOs_good <- sigKOs %>%
-  filter(tot >= 10) %>%
-  filter(tot <= 43)
-sigKO_df <- brady_mat_reorder_t %>%
-  dplyr::select(all_of(sigKOs$KO)) %>%
-  mutate(AI = d_AI_ordered$AI)
-
-pdf("InitialFigs/LogRegK00982.pdf", width = 7, height = 5)
-ggplot(sigKO_df, aes(x = AI, y = K00982)) + 
-  geom_point() +
-  stat_smooth(method = "glm", color = "blue", se = F, 
-              method.args = list(family = binomial)) +
-  labs(x = "drier <= Aridity index => wetter",
-       y = "Predicted probability") +
-  ggtitle("K00982: adenylyltransferase [EC:2.7.7.42]") +
-  theme_bw() +
-  theme(plot.title = element_text(hjust = 0.5),
-        axis.title = element_text(size = 12),
-        axis.text = element_text(size = 10))
-dev.off()
-pdf("InitialFigs/LogRegK01577.pdf", width = 7, height = 5)
-ggplot(sigKO_df, aes(x = AI, y = K01577)) + 
-  geom_point() +
-  stat_smooth(method = "glm", color = "blue", se = F, 
-              method.args = list(family = binomial)) +
-  labs(x = "drier <= Aridity index => wetter",
-       y = "Predicted probability") +
-  ggtitle("K01577: oxalyl-CoA decarboxylase [EC:4.1.1.8]") +
-  theme_bw() +
-  theme(plot.title = element_text(hjust = 0.5),
-        axis.title = element_text(size = 12),
-        axis.text = element_text(size = 10))
-dev.off()
-pdf("InitialFigs/LogRegK02068.pdf", width = 7, height = 5)
-ggplot(sigKO_df, aes(x = AI, y = K02068)) + 
-  geom_point() +
-  stat_smooth(method = "glm", color = "blue", se = F, 
-              method.args = list(family = binomial)) +
-  labs(x = "drier <= Aridity index => wetter",
-       y = "Predicted probability") +
-  ggtitle("K02068: UDP-glucose/iron transport system ATP-binding protein") +
-  theme_bw() +
-  theme(plot.title = element_text(hjust = 0.5),
-        axis.title = element_text(size = 12),
-        axis.text = element_text(size = 10))
-dev.off()
-pdf("InitialFigs/LogRegK16074.pdf", width = 7, height = 5)
-ggplot(sigKO_df, aes(x = AI, y = K16074)) + 
-  geom_point() +
-  stat_smooth(method = "glm", color = "blue", se = F, 
-              method.args = list(family = binomial)) +
-  labs(x = "drier <= Aridity index => wetter",
-       y = "Predicted probability") +
-  ggtitle("K16074: zinc transporter") +
-  theme_bw() +
-  theme(plot.title = element_text(hjust = 0.5),
-        axis.title = element_text(size = 12),
-        axis.text = element_text(size = 10))
-dev.off()
-pdf("InitialFigs/LogRegK03046.pdf", width = 7, height = 5)
-ggplot(sigKO_df, aes(x = AI, y = K03046)) + 
-  geom_point() +
-  stat_smooth(method = "glm", color = "blue", se = F, 
-              method.args = list(family = binomial)) +
-  labs(x = "drier <= Aridity index => wetter",
-       y = "Predicted probability") +
-  ggtitle("K03046: DNA-directed RNA polymerase subunit beta' [EC:2.7.7.6]") +
-  theme_bw() +
-  theme(plot.title = element_text(hjust = 0.5),
-        axis.title = element_text(size = 12),
-        axis.text = element_text(size = 10))
-dev.off()
-
-
-#### _Gene Clusters ####
-# From anvio pangenomics analysis
-# Pangenome summary file (anvi-summarize)
-# Note: 7,842 gene clusters with 399,027 genes
-gc_all <- read.delim("~/Desktop/Fierer/Strains/Australia/BRADY-SUMMARY/Bradyrhizobium_Pan_gene_clusters_summary.txt")
-names(gc_all)
-
-# Check if all genes in the gc have the same function
-gc_check_fun <- gc_all %>%
-  group_by(gene_cluster_id, COG20_FUNCTION_ACC) %>%
-  summarise(n = n())
-nrow(gc_check_fun) # 8205 is more than 7842, so no.
-
-
-
-#### __Patterns ####
-# Collapse to 1 row per gene cluster, with 1 COG category (most frequent) each
-# Wrangle COG Categories. Note 2392 unknown function
-gc <- read.delim("~/Desktop/Fierer/Strains/Australia/BRADY-SUMMARY/Bradyrhizobium_Pan_gene_clusters_summary.txt") %>%
-  arrange(gene_cluster_id, COG20_CATEGORY) %>%
-  group_by(gene_cluster_id) %>%
-  add_count(COG20_CATEGORY, sort = TRUE) %>% # Count occurrences of 'COG20_CATEGORY' within each group
-  slice_max(n, n = 1, with_ties = FALSE) %>% # Select the most frequent
-  #slice_head(n = 1) %>% # Old version, just getting first COG
-  mutate(COG20_CATEGORY = ifelse(COG20_CATEGORY == "", "Unknown", COG20_CATEGORY)) %>%
-  separate(COG20_CATEGORY, remove = F, sep = "\\|",
-           into = c("COG1", "COG2", "COG3", "COG4", "COG5", "COG6", "COG7", "COG8"))
-dup_fun <- gc %>%
-  rowwise() %>%
-  transmute(all_equal = n_distinct(c_across(c("COG1", "COG2", "COG3", "COG4", 
-                                              "COG5", "COG6", "COG7", "COG8")), 
-                                   na.rm = TRUE) == 1) %>%
-  ungroup()
-gc$all_equal <- dup_fun$all_equal
-gc <- gc %>%
-  mutate(COG20_Uniq = ifelse(all_equal == TRUE, COG1, "Multiple"))
-
-# Prep data and plot % of gene clusters by COG
-cog_df_all <- as.data.frame(table(gc$COG20_Uniq)) %>%
-  set_names(c("COG", "Freq")) %>%
-  mutate(All = Freq/nrow(gc)*100) %>%
-  dplyr::select(COG, All)
-gc_53 <- gc %>%
-  filter(num_genomes_gene_cluster_has_hits == 53)
-cog_df_53 <- as.data.frame(table(gc_53$COG20_Uniq)) %>%
-  set_names(c("COG", "Freq")) %>%
-  mutate("Genomes_53" = Freq/nrow(gc_53)*100) %>%
-  dplyr::select(COG, Genomes_53)
-gc_252 <- gc %>%
-  filter(num_genomes_gene_cluster_has_hits <= 52 & num_genomes_gene_cluster_has_hits >= 2)
-cog_df_252 <- as.data.frame(table(gc_252$COG20_Uniq)) %>%
-  set_names(c("COG", "Freq")) %>%
-  mutate("Genomes_2_to_52" = Freq/nrow(gc_252)*100) %>%
-  dplyr::select(COG, Genomes_2_to_52)
-gc_1 <- gc %>%
-  filter(num_genomes_gene_cluster_has_hits == 1)
-cog_df_1 <- as.data.frame(table(gc_1$COG20_Uniq)) %>%
-  set_names(c("COG", "Freq")) %>%
-  mutate("Genomes_1" = Freq/nrow(gc_1)*100) %>%
-  dplyr::select(COG, Genomes_1)
-cog_comb <- cog_df_all %>%
-  left_join(., cog_df_53, by = c("COG")) %>%
-  left_join(., cog_df_252, by = c("COG")) %>%
-  left_join(., cog_df_1, by = c("COG")) %>%
-  #replace(is.na(.), 0) %>%
-  column_to_rownames(var = "COG")
-colSums(cog_comb, na.rm = T)
-min(cog_comb, na.rm = T)
-max(cog_comb, na.rm = T)
-pheatmap(cog_comb,
-         legend = T,
-         legend_breaks = c(0.0255037, 20, 40, 60, 80, 88.99676),
-         legend_labels = c("0", "20", "40", "60", "80", ""),
-         main = "            % Gene Clusters by COG",
-         cluster_rows = F,
-         cluster_cols = F,
-         labels_col = c("All (n = 7842)", 
-                        "In 53 genomes (n = 6560)",
-                        "In 2 to 52 genomes (n = 973)",
-                        "In 1 genome (n = 309)"),
-         angle_col = 315,
-         display_numbers = T,
-         number_color = "black",
-         fontsize_number = 10,
-         border_color = "white",
-         filename = "InitialFigs/GeneClusters_COGs.png",
-         width = 6,
-         height = 8)
-dev.off()
-dev.set(dev.next())
-dev.set(dev.next())
-
-# Prep data and plot homogeneity by COG
-cog_df_all <- gc %>%
-  group_by(COG20_Uniq) %>%
-  summarise(All_FH = mean(functional_homogeneity_index),
-            All_GH = mean(geometric_homogeneity_index)) %>%
-  ungroup() %>%
-  rename(COG = COG20_Uniq)
-cog_df_53 <- gc_53 %>%
-  group_by(COG20_Uniq) %>%
-  summarise(Genomes53_FH = mean(functional_homogeneity_index),
-            Genomes53_GH = mean(geometric_homogeneity_index)) %>%
-  ungroup() %>%
-  rename(COG = COG20_Uniq)
-gc_2752 <- gc %>%
-  filter(num_genomes_gene_cluster_has_hits <= 52 & num_genomes_gene_cluster_has_hits >= 27)
-cog_df_2752 <- gc_2752 %>%
-  group_by(COG20_Uniq) %>%
-  summarise(Genomes2752_FH = mean(functional_homogeneity_index),
-            Genomes2752_GH = mean(geometric_homogeneity_index)) %>%
-  ungroup() %>%
-  rename(COG = COG20_Uniq)
-gc_226 <- gc %>%
-  filter(num_genomes_gene_cluster_has_hits <= 26 & num_genomes_gene_cluster_has_hits >= 2)
-cog_df_226 <- gc_226 %>%
-  group_by(COG20_Uniq) %>%
-  summarise(Genomes226_FH = mean(functional_homogeneity_index),
-            Genomes226_GH = mean(geometric_homogeneity_index)) %>%
-  ungroup() %>%
-  rename(COG = COG20_Uniq)
-cog_comb <- cog_df_all %>%
-  left_join(., cog_df_53, by = c("COG")) %>%
-  left_join(., cog_df_2752, by = c("COG")) %>%
-  left_join(., cog_df_226, by = c("COG")) %>%
-  column_to_rownames(var = "COG") %>%
-  dplyr::select(All_FH, Genomes53_FH, Genomes2752_FH, Genomes226_FH,
-                All_GH, Genomes53_GH, Genomes2752_GH, Genomes226_GH)
-colSums(cog_comb, na.rm = T)
-min(cog_comb, na.rm = T)
-max(cog_comb, na.rm = T)
-ann_cols <- data.frame(row.names = colnames(cog_comb),
-                       "Index" = c(rep("Functional", 4),
-                                   rep("Geometric", 4)))
-ann_colors <- list(Index = c(Functional = "#F8766D",
-                             Geometric = "#619CFF"))
-pheatmap(cog_comb,
-         legend = T,
-         main = "               Gene Clusters Homogeneity by COG",
-         cluster_rows = F,
-         cluster_cols = F,
-         gaps_col = 4,
-         labels_col = c("All (n = 7842)",
-                        "In 53 genomes (n = 6560)",
-                        "In 27 to 52 genomes (n = 508)",
-                        "In 2 to 26 genomes (n = 465)",
-                        "All (n = 7842)",
-                        "In 53 genomes (n = 6560)",
-                        "In 27 to 52 genomes (n = 508)",
-                        "In 2 to 26 genomes (n = 465)"),
-         annotation_col = ann_cols,
-         annotation_colors = ann_colors,
-         angle_col = 315,
-         display_numbers = T,
-         number_format = "%.3f",
-         number_color = "black",
-         fontsize_number = 6,
-         border_color = "white",
-         filename = "InitialFigs/GeneClusters_Homogeneity.png",
-         width = 8,
-         height = 6)
-dev.off()
-dev.set(dev.next())
-dev.set(dev.next())
-
-
-
-#### __Heterogeneity ####
-# Selected gene clusters in all 53 genomes but most heterogeneous
-# Functional homogeneity and geometric homogeneity, below 0.75
-hetF_names <- read.delim("data/HetF_GC_names.txt", header = F) %>%
-  rename(gene_cluster_id = V1) %>%
-  mutate(gene_cluster_id = gsub("BRADY_", "", gene_cluster_id)) %>%
-  mutate(gene_cluster_id = gsub(".fa", "", gene_cluster_id))
-hetG_names <- read.delim("data/HetG_GC_names.txt", header = F) %>%
-  rename(gene_cluster_id = V1) %>%
-  mutate(gene_cluster_id = gsub("BRADY_", "", gene_cluster_id)) %>%
-  mutate(gene_cluster_id = gsub(".fa", "", gene_cluster_id))
-
-# Functional Homogeneity
-gcF <- gc_all %>%
-  filter(gene_cluster_id %in% hetF_names$gene_cluster_id)
-length(unique(gcF$gene_cluster_id))
-# Get one function per gene cluster
-gcF <- gc_all %>%
-  filter(gene_cluster_id %in% hetF_names$gene_cluster_id) %>%
-  group_by(gene_cluster_id, COG20_FUNCTION) %>%
-  summarise(n = n(), FH = mean(functional_homogeneity_index)) %>%
-  slice_tail(n = 1) %>%
-  arrange(FH)
-  
-# Geometric Homogeneity
-gcG <- gc_all %>%
-  filter(gene_cluster_id %in% hetG_names$gene_cluster_id)
-length(unique(gcG$gene_cluster_id))
-# Get one function per gene cluster
-gcG <- gc_all %>%
-  filter(gene_cluster_id %in% hetG_names$gene_cluster_id) %>%
-  group_by(gene_cluster_id, COG20_FUNCTION) %>%
-  summarise(n = n(), GH = mean(geometric_homogeneity_index)) %>%
-  slice_tail(n = 1) %>%
-  arrange(GH)
-# Paste those into Excel spreadsheet
-
-
-
-#### _Phylogeny ####
-# Need to know if the strains are the same species or not
-# Full
-gtdb_brady <- read.delim("~/Desktop/Fierer/Strains/bac120_metadata_r220.tsv") %>%
-  mutate(gtdb_taxonomy = gsub("d__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("p__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("c__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("o__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("f__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("g__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("s__", "", gtdb_taxonomy)) %>%
-  separate(gtdb_taxonomy, 
-           into = c("Domain", "Phylum", "Class", "Order", "Family", "Genus", "Species"),
-           sep = ";") %>%
-  filter(Genus == "Bradyrhizobium")
-# 869 genomes
-# Make sure the reference used in StrainFinder is there
-# GCA_016616885.1
-"GCA_016616885.1" %in% gtdb_brady$ncbi_genbank_assembly_accession # TRUE
-# Save these 869 accessions as a list
-# write.table(gtdb_brady$ncbi_genbank_assembly_accession,
-#             "data/brady869.txt", sep = "\t", row.names = F, col.names = F)
-# Don't forget to run dos2unix
-
-# dRep
-gtdb_brady_dRep <- read.delim("~/Desktop/Fierer/Strains/bac120_metadata_r220.tsv") %>%
-  filter(gtdb_representative == "t") %>%
-  mutate(gtdb_taxonomy = gsub("d__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("p__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("c__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("o__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("f__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("g__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("s__", "", gtdb_taxonomy)) %>%
-  separate(gtdb_taxonomy, 
-           into = c("Domain", "Phylum", "Class", "Order", "Family", "Genus", "Species"),
-           sep = ";") %>%
-  filter(Genus == "Bradyrhizobium")
-# 278 genomes
-# Make sure the reference used in StrainFinder is there
-# GCA_016616885.1
-"GCA_016616885.1" %in% gtdb_brady_dRep$ncbi_genbank_assembly_accession # TRUE
-# Save these 278 accessions as a list
-# write.table(gtdb_brady_dRep$ncbi_genbank_assembly_accession,
-#             "data/brady278.txt", sep = "\t", row.names = F, col.names = F)
-# Don't forget to run dos2unix
-
-
-
-#### __16S ####
-# Extracted 16S with barrnap
-counts_16S <- read.table("data/16S_counts.txt") %>%
-  dplyr::select(V1, V2) %>%
-  set_names(c("Genome", "Count16S"))
-table(counts_16S$Count16S)
-# 36 with 0, 276 with 1, 14 with 2, 1 with 3, 5 with 4
-# Of the 20 with multiple, 8 are identical, 12 are different
-# Just use the 276 with 1 16S
-
-# Best tree from RAxML with bootstrap support
-tree_16S <- ape::read.tree("data/RAxML_bipartitions.16S")
-ggtree(tree_16S)
-# Okay all of the Brady are in the same branch
-# There are also 2 GTDB completely rescaling the tree - prune those
-# Check those, maybe they didn't have full length 16S...
-# GCA_023435725.1.fna
-# GCA_028290305.1.fna
-# BLAST says these are both uncultured bacterium clones
-tree_16S_pruned <- drop.tip(tree_16S,
-                            tip = c("GCA_023435725.1.fna",
-                                    "GCA_028290305.1.fna"))
-tree_16S_pruned$tip.label <- gsub(".fna", "", tree_16S_pruned$tip.label)
-tree_16S_pruned$tip.label <- gsub("Brady_", "", tree_16S_pruned$tip.label)
-tree_16S_pruned$tip.label <- gsub("_", "", tree_16S_pruned$tip.label)
-tree_16S_pruned$tip.label
-tipcols <- c(rep("black", 7),
-             rep("red", 53),
-             rep("black", 181),
-             "blue",
-             rep("black", 31),
-             "purple")
-pdf("InitialFigs/BradyTree_16S.pdf", width = 7, height = 9)
-ggtree(tree_16S_pruned, linewidth = 0.1) +
-  geom_tiplab(size = 1, vjust = 0.5,
-              color = tipcols) +
-  geom_treescale() +
-  geom_nodelab(aes(label = label), size = 0.75)
-dev.off()
-#write.tree(tree_16S_pruned, "data/tree_16S_pruned.nwk")
-# Note the closest branch is Bradyrhizobium vignae genome assembly ASM411442v1
-# That one was isolated from Arachis nodules
-
-
-
-#### __bac120 ####
-# Best tree without bootstrap values (bootstrap takes awhile!)
-# Remember, reference was Bradyrhizobium diazoefficiens
-# But closest 16S was Bradyrhizobium vignae
-# In bac120, equally close are the reference and Bradyrhizobium sp. WSM3983
-tree_bac120 <- read.tree("data/RAxML_bipartitions.bac120")
-tree_bac120$tip.label <- gsub(".fna", "", tree_bac120$tip.label)
-tree_bac120$tip.label <- gsub("Brady_", "", tree_bac120$tip.label)
-tree_bac120$tip.label <- gsub("_", "", tree_bac120$tip.label)
-tree_bac120$tip.label
-tipcols <- c(rep("black", 138),
-             rep("red", 53),
-             "black",
-             "blue",
-             rep("black", 138),
-             "purple")
-pdf("InitialFigs/BradyTree_Bac120.pdf", width = 7, height = 9)
-ggtree(tree_bac120, linewidth = 0.1) +
-  geom_tiplab(size = 0.55, vjust = 0.5,
-              color = tipcols) +
-  geom_treescale() +
-  geom_nodelab(aes(label = label), size = 0.75)
-dev.off()
-
-# Brady only
-tree_data <- d_brady %>%
-  dplyr::select(sampleID, conductivity, nitrate_nitrogen, organic_carbon, bio1,
-                bio12, AI) %>%
-  column_to_rownames(var = "sampleID") %>%
-  scale() %>%
-  as.data.frame()
-tree_bac120$tip.label
-tree_bac120_pruned <- drop.tip(tree_bac120,
-                               tip = c(tree_bac120$tip.label[1:138],
-                                       tree_bac120$tip.label[192:332]))
-p <- ggtree(tree_bac120_pruned, linewidth = 0.2) +
-  geom_tiplab(size = 2, vjust = 0.5, align = TRUE) +
-  geom_treescale(y = -2) +
-  geom_nodelab(aes(label = label, fill = "white"), size = 2, hjust = 0) +
-  new_scale_fill()
-pdf("InitialFigs/BradyTree_Strains_Heatmap.pdf", width = 8, height = 6)
-gheatmap(p, tree_data, offset = 0.01, width = 0.8, font.size = 3, 
-         colnames_angle = -45, hjust = 0) +
-  scale_fill_viridis_c(option = "B", name = "z-score") +
-  scale_y_continuous(expand = c(0.15, 0)) +
-  theme(legend.box.margin = margin(0,0,0,-20, unit = "pt"),
-        plot.margin = margin(-55,0,-15,0, unit = "pt"))
-dev.off()
-
-
-
-#### 6. Pop. Genomics ####
-# Assess strain population genomics from .vcf files
-# Input_POGENOM and POGENOM
-# Ran with fasta and with gff for additional gene by gene metrics
-allele_freqs <- read.delim("data/pogenom_fasta_results/Brady.allele-freqs.txt")
-pi_locus <- read.delim("data/pogenom_fasta_results/Brady.intradiv-per-locus.txt")
-pi <- read.delim("data/pogenom_fasta_results/Brady.intradiv.txt") %>%
-  filter(Sample != "All_samples_combined") %>%
-  arrange(Sample) %>%
-  select(Sample, Intra_pi) %>%
-  rename(sampleID = Sample)
-
-
-
-#### _Pairwise FST ####
-fst <- read.delim("data/pogenom_fasta_results/Brady.fst.txt") %>%
-  mutate(X = as.character(X)) %>%
-  arrange(X) %>%
-  column_to_rownames(var = "X") %>%
-  set_names(gsub("X", "", names(.))) %>%
-  dplyr::select(all_of(rownames(.)))
-dist.fst <- as.matrix(fst)
-dist.fst[upper.tri(dist.fst, diag = TRUE)] <- NA
-hist(dist.fst)
-range(fst, na.rm = T) # Range is -0.0919 to 0.3732
-
-# Since fst only has 52 samples, need to reselect the other distance matrices
-# Also add in pi!
-d_brady <- d %>%
-  filter(sampleID %in% rownames(fst)) %>%
-  mutate(sampleID = as.character(sampleID)) %>%
-  arrange(sampleID) %>%
-  left_join(., pi, by = "sampleID")
-d_brady_env <- d_brady %>%
-  select(sampleID, all_of(env_vars)) %>%
-  select(where(~ all(!is.na(.)))) %>%
-  select(-sampleID, -latitude, -longitude)
-dist.16S <- dist.16S[rownames(dist.fst), rownames(dist.fst)]
-dist.ai <- dist.ai[rownames(dist.fst), rownames(dist.fst)]
-dist.ani <- dist.ani[rownames(dist.fst), rownames(dist.fst)]
-dist.env <- dist.env[rownames(dist.fst), rownames(dist.fst)]
-dist.geog <- dist.geog[rownames(dist.fst), rownames(dist.fst)]
-
-
-# Map with 52 samples
-coords <- d_brady %>%
-  select(sampleID, latitude, longitude, AI)
-coords_trans <- st_as_sf(coords, 
-                         coords = c('longitude', 'latitude'), 
-                         crs=4326)
-ozmap()
-sf_oz <- ozmap("states")
-pdf("InitialFigs/Mapn52.pdf", width = 7, height = 5)
-ggplot(data = sf_oz) + 
-  geom_sf(fill = "grey80", color = "white") +
-  geom_sf(data = coords_trans,
-          aes(color = AI)) +
-  scale_color_gradient(low = "red", high = "blue") +
-  theme_minimal()
-dev.off()
-
-
-
-#### __Test ####
-mantel(dist.fst, dist.ai, method = "pearson", permutations = 2000)
-mantel(dist.fst, dist.env, method = "pearson", permutations = 2000)
-mantel(dist.fst, dist.geog, method = "pearson", permutations = 2000)
-mantel(dist.fst, dist.ai, method = "spearman", permutations = 2000)
-mantel(dist.fst, dist.env, method = "spearman", permutations = 2000)
-mantel(dist.fst, dist.geog, method = "spearman", permutations = 2000)
-
-dist.fst.d <- as.dist(dist.fst)
-set.seed(1100)
-mod0 <- dbrda(dist.fst.d ~ 1, d_brady_env)  # Model with intercept only
-mod1 <- dbrda(dist.fst.d ~ ., d_brady_env)  # Model with all explanatory variables
-mod <- ordistep(mod0, scope = formula(mod1))
-mod$anova # AI and bio1
-
-
-
-#### __Plot ####
-vec.ani <- as.vector(dist.ani)
-vec.16S <- as.vector(dist.16S)
-vec.fst <- as.vector(dist.fst)
-vec.geog <- as.vector(dist.geog)
-vec.ai <- as.vector(dist.ai)
-vec.env <- as.vector(dist.env)
-mats <- data.frame(ANI = vec.ani,
-                   rRNA16S = vec.16S,
-                   Fst = vec.fst,
-                   Geog = vec.geog,
-                   AI = vec.ai,
-                   Env = vec.env) %>%
-  drop_na()
-mats_long <- mats %>%
-  pivot_longer(cols = c("Geog", "AI", "Env"))
-facet_names <- c("AI" = "'Aridity Index'",
-                 "Env" = "'Env. (Euclidean)'",
-                 "Geog" = "'Geog. (m)'",
-                 "ANI" = "'ANI (% ID)'",
-                 "rRNA16S" = "'16S (% ID)'",
-                 "Fst" = "F[ST]")
-mats_long1 <- mats_long %>%
-  mutate(Dataset = "ANI") %>%
-  dplyr::select(-rRNA16S, -Fst) %>%
-  rename("y" = "ANI")
-mats_long2 <- mats_long %>%
-  mutate(Dataset = "rRNA16S") %>%
-  dplyr::select(-ANI, -Fst) %>%
-  rename("y" = "rRNA16S")
-mats_long3 <- mats_long %>%
-  mutate(Dataset = "Fst") %>%
-  dplyr::select(-ANI, -rRNA16S) %>%
-  rename("y" = "Fst")
-mats_long_three <- rbind(mats_long1, mats_long2, mats_long3) %>%
-  mutate(Dataset = factor(Dataset, levels = c("ANI", "rRNA16S", "Fst")))
-# Pearson
-mantel(dist.ani, dist.ai, method = "pearson", permutations = 2000)
-mantel(dist.ani, dist.env, method = "pearson", permutations = 2000)
-mantel(dist.ani, dist.geog, method = "pearson", permutations = 2000)
-mantel(dist.16S, dist.ai, method = "pearson", permutations = 2000)
-mantel(dist.16S, dist.env, method = "pearson", permutations = 2000)
-mantel(dist.16S, dist.geog, method = "pearson", permutations = 2000)
-mantel(dist.fst, dist.ai, method = "pearson", permutations = 2000)
-mantel(dist.fst, dist.env, method = "pearson", permutations = 2000)
-mantel(dist.fst, dist.geog, method = "pearson", permutations = 2000)
-stats_label <- data.frame(Dataset = c("ANI", "ANI", "ANI", 
-                                      "rRNA16S", "rRNA16S", "rRNA16S",
-                                      "Fst", "Fst", "Fst"),
-                          name = c("AI", "Env", "Geog", "AI", "Env", "Geog",
-                                   "AI", "Env", "Geog"),
-                          x = c(Inf, Inf, Inf, Inf, Inf, Inf, Inf, Inf, Inf),
-                          y = c(Inf, Inf, Inf, Inf, Inf, Inf, Inf, Inf, Inf),
-                          label = c("r = -0.17\np = 0.96",
-                                    "r = -0.12\np = 0.88",
-                                    "r = -0.25\np = 0.99",
-                                    "r = -0.45\np = 1.00",
-                                    "r = -0.41\np = 1.00",
-                                    "r = -0.18\np = 0.97",
-                                    "r = 0.02\np = 0.38",
-                                    "r = -0.02\np = 0.48",
-                                    "r = 0.10\np = 0.14"))  %>%
-  mutate(Dataset = factor(Dataset, levels = c("ANI", "rRNA16S", "Fst")))
-pdf("InitialFigs/Dist_ANI_16S_Fst_Pearson.pdf", width = 7, height = 8)
-ggplot(mats_long_three, aes(value, y)) +
-  geom_point(size = 1.5, alpha = 0.2, pch = 16) +
-  geom_smooth(method = "lm", linetype = "dashed", se = FALSE) +
-  geom_text(data = stats_label, aes(x, y, label = label), 
-            size = 2, hjust = 1.25, vjust = 1.4) +
-  facet_grid(Dataset ~ name, scales = "free", 
-             labeller = as_labeller(facet_names, default = label_parsed)) +
-  labs(x = "Distance",
-       y = NULL) +
-  theme_bw() +
-  theme(axis.title = element_text(size = 14),
-        axis.text.y = element_text(size = 12),
-        axis.text.x = element_text(size = 8),
-        strip.text = element_text(size = 12),
-        panel.spacing.x = unit(c(1, 1), "lines"))
-dev.off()
-
-# Spearman
-mantel(dist.ani, dist.ai, method = "spearman", permutations = 2000)
-mantel(dist.ani, dist.env, method = "spearman", permutations = 2000)
-mantel(dist.ani, dist.geog, method = "spearman", permutations = 2000)
-mantel(dist.16S, dist.ai, method = "spearman", permutations = 2000)
-mantel(dist.16S, dist.env, method = "spearman", permutations = 2000)
-mantel(dist.16S, dist.geog, method = "spearman", permutations = 2000)
-mantel(dist.fst, dist.ai, method = "spearman", permutations = 2000)
-mantel(dist.fst, dist.env, method = "spearman", permutations = 2000)
-mantel(dist.fst, dist.geog, method = "spearman", permutations = 2000)
-stats_label <- data.frame(Dataset = c("ANI", "ANI", "ANI", 
-                                      "rRNA16S", "rRNA16S", "rRNA16S",
-                                      "Fst", "Fst", "Fst"),
-                          name = c("AI", "Env", "Geog", "AI", "Env", "Geog",
-                                   "AI", "Env", "Geog"),
-                          x = c(Inf, Inf, Inf, Inf, Inf, Inf, Inf, Inf, Inf),
-                          y = c(Inf, Inf, Inf, Inf, Inf, Inf, Inf, Inf, Inf),
-                          label = c("r = -0.14\np = 0.97",
-                                    "r = -0.08\np = 0.85",
-                                    "r = -0.23\np = 0.99",
-                                    "r = -0.43\np = 1.00",
-                                    "r = -0.40\np = 1.00",
-                                    "r = -0.31\np = 1.00",
-                                    "r = 0.05\np = 0.19",
-                                    "r = -0.02\np = 0.48",
-                                    "r = 0.14\np = 0.05"))  %>%
-  mutate(Dataset = factor(Dataset, levels = c("ANI", "rRNA16S", "Fst")))
-pdf("InitialFigs/Dist_ANI_16S_Fst.pdf", width = 7, height = 8)
-ggplot(mats_long_three, aes(value, y)) +
-  geom_point(size = 1.5, alpha = 0.2, pch = 16) +
-  geom_smooth(method = "lm", linetype = "dashed", se = FALSE) +
-  geom_smooth(data = subset(mats_long_three, name == "Geog" & Dataset == "Fst"),
-                            method = "lm", se = FALSE) +
-  geom_text(data = stats_label, aes(x, y, label = label), 
-            size = 2, hjust = 1.25, vjust = 1.4) +
-  facet_grid(Dataset ~ name, scales = "free", 
-             labeller = as_labeller(facet_names, default = label_parsed)) +
-  labs(x = "Distance",
-       y = NULL) +
-  theme_bw() +
-  theme(axis.title = element_text(size = 14),
-        axis.text.y = element_text(size = 12),
-        axis.text.x = element_text(size = 8),
-        strip.text = element_text(size = 12),
-        panel.spacing.x = unit(c(1, 1), "lines"))
-dev.off()
-
-
-
-#### _IntraPi ####
-# Test for best model of nucleotide diversity
-X <- d_brady_env %>%
-  scale()
-y <- scale(d_brady$Intra_pi)
-Xy <- as.data.frame(cbind(X, y))
-bestM <- bestglm(Xy,
-                 family = gaussian,
-                 IC = "AIC",
-                 t = "default",
-                 CVArgs = "default", 
-                 qLevel = 0.99, 
-                 TopModels = 10, 
-                 method = "exhaustive", 
-                 intercept = TRUE, 
-                 weights = NULL, 
-                 nvmax = "default", 
-                 RequireFullEnumerationQ = FALSE)
-bestM # Conductivity, Nitrate, Precip
-bestM$BestModels
-
-# Univariate
-summary(lm(Intra_pi ~ conductivity, data = d_brady))
-summary(lm(y ~ X[,1]))
-summary(lm(Intra_pi ~ nitrate_nitrogen, data = d_brady))
-summary(lm(y ~ X[,2]))
-
-# Plot intraspecies nucleotide diversity by environment
-ggplot(d_brady, aes(conductivity, Intra_pi)) +
-  geom_point(size = 2, alpha = 0.75, pch = 16) +
-  theme_bw()
-pdf("InitialFigs/Pi_Nitrate.pdf", width = 7, height = 5)
-ggplot(d_brady, aes(nitrate_nitrogen, Intra_pi)) +
-  geom_point(size = 3, alpha = 0.75, pch = 16) +
-  geom_smooth(method = "lm") +
-  geom_text(x = Inf, y = Inf, 
-            label = "R^2 == 0.11~~~p == 0.015", 
-            check_overlap = T, hjust = 1.1, vjust = 1.4, parse = T) +
-  labs(x = "Soil nitrate (mg/kg soil)",
-       y = expression(Nucleotide~diversity~"("*pi*")")) +
-  theme_bw() +
-  theme(axis.title = element_text(size = 14),
-        axis.text.y = element_text(size = 12))
-dev.off()
-ggplot(d_brady, aes(organic_carbon, Intra_pi)) +
-  geom_point(size = 2, alpha = 0.75, pch = 16) +
-  theme_bw()
-ggplot(d_brady, aes(bio1, Intra_pi)) +
-  geom_point(size = 2, alpha = 0.75, pch = 16) +
-  theme_bw()
-ggplot(d_brady, aes(bio12, Intra_pi)) +
-  geom_point(size = 2, alpha = 0.75, pch = 16) +
-  theme_bw()
-ggplot(d_brady, aes(AI, Intra_pi)) +
-  geom_point(size = 2, alpha = 0.75, pch = 16) +
-  theme_bw()
-
-
-
-#### _Gene-wise ####
-pNpS <- read.delim("data/pogenom_gff_results/Brady.pNpS-per-gene.txt")
-pNpS_rows <- pNpS %>%
-  na.omit() # 0
-pNpS_cols <- pNpS %>%
-  select(where(~ all(!is.na(.))))
-pNpS_loci <- pNpS %>%
-  filter(Num_loci > 0) %>%
-  select(where(~ !all(is.na(.))))
-
-
-
-#### 7. Strain Distributions ####
-# Reran sylph 1) 53 strains, 2) 53 Strains + All Brady GTDB Genomes
-# Assess distribution in 1) 53 sampkes, 2) 104 samples
-# Thus, need to make 4 heatmaps
-# Sort by AI
-ref_ani <- read.delim("data/Brady_fastani.txt",
-                      header = F) %>%
-  set_names("Reference", "Query", "ANI", "Aligned1", "Aligned2") %>%
-  mutate(Reference = gsub("/scratch/alpine/clbd1748/Australia/BradyStrainsRef/",
-                          "", Reference)) %>%
-  mutate(Query = gsub("/scratch/alpine/clbd1748/Australia/BradyStrainsRef/",
-                      "", Query)) %>%
-  filter(grepl("Reference", Reference)) %>%
-  filter(Query != "BradyReference.fna") %>%
-  separate(Query, into = c("Brady", "sampleID"), sep = "_", remove = FALSE) %>%
-  mutate(sampleID = gsub(".fna", "", sampleID)) %>%
-  mutate(sampleID = as.integer(sampleID)) %>%
-  dplyr::select(sampleID, ANI)
-d_ai_sort <- d %>%
-  arrange(AI)
-d_brady <- d %>%
-  filter(sampleID %in% ref_ani$sampleID) %>%
-  mutate(sampleID = as.character(sampleID)) %>%
-  arrange(sampleID)
-d_brady_ai_sort <- d_brady %>%
-  arrange(AI)
-
-
-
-#### _Strains ####
-# 53 Samples
-strains_sylph <- read.delim("data/sylph_profile_bradystrains_ani95.tsv") %>%
-  mutate(SampleID = gsub("/scratch/alpine/clbd1748/Australia/QC_reads/", "", Sample_file)) %>%
-  separate(SampleID, into = c("SampleID", "Junk1", "Junk2"), sep = "_") %>%
-  dplyr::select(-Junk1, -Junk2) %>%
-  mutate(GenomeID = gsub("/scratch/alpine/clbd1748/Australia/BradyStrains/Brady_",
-                         "", Genome_file)) %>%
-  mutate(GenomeID = gsub(".fna",
-                         "", GenomeID)) %>%
-  mutate(Same = SampleID == GenomeID) %>%
-  filter(SampleID %in% d_brady$sampleID)
-length(unique(strains_sylph$Sample_file)) # 53
-length(unique(strains_sylph$Genome_file)) # 53
-# How many strains in their StrainFinder sample?
-sum(strains_sylph$Same) # 53!
-# How many strains in another sample?
-sum(strains_sylph$Same == FALSE) # 4
-
-# Plot (will mostly be 1 to 1 but also 4 other squares)
-sylph_strains_53 <- strains_sylph %>%
-  dplyr::select(SampleID, GenomeID, Sequence_abundance) %>%
-  pivot_wider(names_from = SampleID, values_from = Sequence_abundance) %>%
-  arrange(d_brady_ai_sort$sampleID) %>%
-  column_to_rownames(var = "GenomeID") %>%
-  dplyr::select(all_of(rownames(.)))
-sum(rownames(sylph_strains_53) != colnames(sylph_strains_53))
-sylph_strains_53 <- move_to_lower_triangle(sylph_strains_53)
-sylph_strains_53 <- replace_lower_triangle_na(sylph_strains_53)
-ann_cols <- data.frame(row.names = colnames(sylph_strains_53), 
-                       AI = d_brady_ai_sort$AI)
-pheatmap(sylph_strains_53,
-         color = colorRampPalette(brewer.pal(n = 7, name = "Reds"))(100),
-         legend = T,
-         main = "            Strains % Abundance, n = 53",
-         cluster_rows = F,
-         cluster_cols = F,
-         angle_col = 90,
-         display_numbers = F,
-         number_color = "black",
-         annotation_col = ann_cols,
-         fontsize_number = 10,
-         fontsize_row = 6,
-         fontsize_col = 6,
-         na_col = "white",
-         border_color = "white",
-         filename = "InitialFigs/Strains_Abund_53.png",
-         width = 8,
-         height = 6)
-dev.off()
-dev.set(dev.next())
-dev.set(dev.next())
-
-# 104 Samples
-strains_sylph <- read.delim("data/sylph_profile_bradystrains_ani95.tsv") %>%
-  mutate(SampleID = gsub("/scratch/alpine/clbd1748/Australia/QC_reads/", "", Sample_file)) %>%
-  separate(SampleID, into = c("SampleID", "Junk1", "Junk2"), sep = "_") %>%
-  dplyr::select(-Junk1, -Junk2) %>%
-  mutate(GenomeID = gsub("/scratch/alpine/clbd1748/Australia/BradyStrains/Brady_",
-                         "", Genome_file)) %>%
-  mutate(GenomeID = gsub(".fna",
-                         "", GenomeID)) %>%
-  mutate(Same = SampleID == GenomeID)
-length(unique(strains_sylph$Sample_file)) # 75
-length(unique(strains_sylph$Genome_file)) # 53
-# How many strains in their StrainFinder sample?
-sum(strains_sylph$Same) # 53!
-# How many strains in another sample?
-sum(strains_sylph$Same == FALSE) # 27
-
-# Plot (will mostly be 1 to 1 but also 27 other squares)
-missings <- d %>%
-  filter(sampleID %notin% strains_sylph$SampleID)
-sylph_strains_104 <- strains_sylph %>%
-  dplyr::select(SampleID, GenomeID, Sequence_abundance) %>%
-  pivot_wider(names_from = SampleID, values_from = Sequence_abundance) %>%
-  arrange(match(GenomeID,  d_brady_ai_sort$sampleID)) %>%
-  column_to_rownames(var = "GenomeID") %>%
-  mutate(!!!set_names(rep(list(NA), length(missings$sampleID)), missings$sampleID)) %>% # Add missings
-  dplyr::select(all_of(d_ai_sort$sampleID))
-# sum(rownames(sylph_strains_104) != colnames(sylph_strains_104))
-# sylph_strains_104 <- move_to_lower_triangle(sylph_strains_104)
-# sylph_strains_104 <- replace_lower_triangle_na(sylph_strains_104)
-ann_cols <- data.frame(row.names = colnames(sylph_strains_104), 
-                       AI = d_ai_sort$AI) %>%
-  mutate(StrainFinder = ifelse(rownames(.) %in% d_brady$sampleID,
-                               "Yes",
-                               "No"))
-ann_colors <- list(StrainFinder = c(No = "#F8766D",
-                                    Yes = "#619CFF"))
-pheatmap(sylph_strains_104,
-         color = colorRampPalette(brewer.pal(n = 7, name = "Reds"))(100),
-         legend = T,
-         main = "            Strains % Abundance, n = 104",
-         cluster_rows = F,
-         cluster_cols = F,
-         angle_col = 90,
-         display_numbers = F,
-         number_color = "black",
-         annotation_col = ann_cols,
-         annotation_colors = ann_colors,
-         fontsize_number = 10,
-         fontsize_row = 6,
-         fontsize_col = 5,
-         na_col = "white",
-         border_color = "white",
-         filename = "InitialFigs/Strains_Abund_104.png",
-         width = 9,
-         height = 6)
-dev.off()
-dev.set(dev.next())
-dev.set(dev.next())
-
-
-
-
-#### _Strains + GTDB ####
-# Use the Strains + GTDB Sylph run but still only plot Strains
-# 53 Samples
-strains_sylph <- read.delim("data/sylph_profile_bradystrainsGTDB_ani95.tsv") %>%
-  mutate(SampleID = gsub("/scratch/alpine/clbd1748/Australia/QC_reads/", "", Sample_file)) %>%
-  separate(SampleID, into = c("SampleID", "Junk1", "Junk2"), sep = "_") %>%
-  dplyr::select(-Junk1, -Junk2) %>%
-  mutate(GenomeID = gsub("/scratch/alpine/clbd1748/Australia/BradyStrainsGTDB/Brady_",
-                         "", Genome_file)) %>%
-  mutate(GenomeID = gsub(".fna",
-                         "", GenomeID)) %>%
-  mutate(GenomeID = gsub("/scratch/alpine/clbd1748/Australia/BradyStrainsGTDB/",
-                         "", GenomeID)) %>%
-  mutate(Same = SampleID == GenomeID) %>%
-  filter(SampleID %in% d_brady$sampleID)
-length(unique(strains_sylph$Sample_file)) # 53
-length(unique(strains_sylph$Genome_file)) # 73, so 20 extra detected
-# How many strains detected at all?
-sum(d_brady$sampleID %in% strains_sylph$GenomeID) # 53
-# How many strains in their StrainFinder sample?
-sum(strains_sylph$Same) # 53
-# How many strains in another sample?
-sum(strains_sylph$Same == FALSE) # 62, including GTDB though
-# How many samples with Reference
-sum(strains_sylph$GenomeID == "Reference") # 6
-
-# Plot (will mostly be 1 to 1 but also 4 other squares)
-sylph_strains_53 <- strains_sylph %>%
-  dplyr::select(SampleID, GenomeID, Sequence_abundance) %>%
-  filter(GenomeID %in% d_brady$sampleID) %>%
-  pivot_wider(names_from = SampleID, values_from = Sequence_abundance) %>%
-  arrange(d_brady_ai_sort$sampleID) %>%
-  column_to_rownames(var = "GenomeID") %>%
-  dplyr::select(all_of(rownames(.)))
-sum(rownames(sylph_strains_53) != colnames(sylph_strains_53))
-sylph_strains_53 <- move_to_lower_triangle(sylph_strains_53)
-sylph_strains_53 <- replace_lower_triangle_na(sylph_strains_53)
-ann_cols <- data.frame(row.names = colnames(sylph_strains_53), 
-                       AI = d_brady_ai_sort$AI)
-pheatmap(sylph_strains_53,
-         color = colorRampPalette(brewer.pal(n = 7, name = "Reds"))(100),
-         legend = T,
-         main = "            Strains % Abundance, n = 53",
-         cluster_rows = F,
-         cluster_cols = F,
-         angle_col = 90,
-         display_numbers = F,
-         number_color = "black",
-         annotation_col = ann_cols,
-         fontsize_number = 10,
-         fontsize_row = 6,
-         fontsize_col = 6,
-         na_col = "white",
-         border_color = "white",
-         filename = "InitialFigs/StrainsGTDB_Abund_53.png",
-         width = 8,
-         height = 6)
-dev.off()
-dev.set(dev.next())
-dev.set(dev.next())
-
-
-
-# 104 Samples
-strains_sylph <- read.delim("data/sylph_profile_bradystrainsGTDB_ani95.tsv") %>%
-  mutate(SampleID = gsub("/scratch/alpine/clbd1748/Australia/QC_reads/", "", Sample_file)) %>%
-  separate(SampleID, into = c("SampleID", "Junk1", "Junk2"), sep = "_") %>%
-  dplyr::select(-Junk1, -Junk2) %>%
-  mutate(GenomeID = gsub("/scratch/alpine/clbd1748/Australia/BradyStrainsGTDB/Brady_",
-                         "", Genome_file)) %>%
-  mutate(GenomeID = gsub(".fna",
-                         "", GenomeID)) %>%
-  mutate(Same = SampleID == GenomeID)
-length(unique(strains_sylph$Sample_file)) # 92
-length(unique(strains_sylph$Genome_file)) # 92
-# How many strains detected at all?
-sum(d_brady$sampleID %in% strains_sylph$GenomeID) # 53
-# How many strains in their StrainFinder sample?
-sum(strains_sylph$Same) # 53
-# How many strains in another sample?
-sum(strains_sylph$Same == FALSE) # 137 but includes other GTDB
-# How many samples with Reference
-sum(strains_sylph$GenomeID == "Reference") # 8
-
-# Plot (will mostly be 1 to 1 but also other squares)
-sylph_strains_104 <- strains_sylph %>%
-  dplyr::select(SampleID, GenomeID, Sequence_abundance) %>%
-  filter(GenomeID %in% d_brady$sampleID)
-missings <- d %>%
-  filter(sampleID %notin% colnames(sylph_strains_104))
-sylph_strains_104 <- strains_sylph %>%
-  dplyr::select(SampleID, GenomeID, Sequence_abundance) %>%
-  filter(GenomeID %in% d_brady$sampleID) %>%
-  pivot_wider(names_from = SampleID, values_from = Sequence_abundance) %>%
-  arrange(match(GenomeID,  d_brady_ai_sort$sampleID)) %>%
-  column_to_rownames(var = "GenomeID") %>%
-  mutate(!!!set_names(rep(list(NA), length(missings$sampleID)), missings$sampleID)) %>% # Add missings
-  dplyr::select(all_of(d_ai_sort$sampleID))
-# sum(rownames(sylph_strains_104) != colnames(sylph_strains_104))
-# sylph_strains_104 <- move_to_lower_triangle(sylph_strains_104)
-# sylph_strains_104 <- replace_lower_triangle_na(sylph_strains_104)
-ann_cols <- data.frame(row.names = colnames(sylph_strains_104), 
-                       AI = d_ai_sort$AI) %>%
-  mutate(StrainFinder = ifelse(rownames(.) %in% d_brady$sampleID,
-                               "Yes",
-                               "No"))
-ann_colors <- list(StrainFinder = c(No = "#F8766D",
-                                    Yes = "#619CFF"))
-pheatmap(sylph_strains_104,
-         color = colorRampPalette(brewer.pal(n = 7, name = "Reds"))(100),
-         legend = T,
-         main = "            Strains % Abundance, n = 104",
-         cluster_rows = F,
-         cluster_cols = F,
-         angle_col = 90,
-         display_numbers = F,
-         number_color = "black",
-         annotation_col = ann_cols,
-         annotation_colors = ann_colors,
-         fontsize_number = 10,
-         fontsize_row = 6,
-         fontsize_col = 5,
-         na_col = "white",
-         border_color = "white",
-         filename = "InitialFigs/StrainsGTDB_Abund_104.png",
-         width = 9,
-         height = 6)
-dev.off()
-dev.set(dev.next())
-dev.set(dev.next())
-
-
-
-#### _Strains w GTDB ####
-# Use the Strains + GTDB Sylph run but plot all genomes hit at least once
-# So instead of 53 genome IDs there will be more
-# Matrix will not be symmetric
-
-# 53
-strains_sylph <- read.delim("data/sylph_profile_bradystrainsGTDB_ani95.tsv") %>%
-  mutate(SampleID = gsub("/scratch/alpine/clbd1748/Australia/QC_reads/", "", Sample_file)) %>%
-  separate(SampleID, into = c("SampleID", "Junk1", "Junk2"), sep = "_") %>%
-  dplyr::select(-Junk1, -Junk2) %>%
-  mutate(GenomeID = gsub("/scratch/alpine/clbd1748/Australia/BradyStrainsGTDB/Brady_",
-                         "", Genome_file)) %>%
-  mutate(GenomeID = gsub(".fna",
-                         "", GenomeID)) %>%
-  mutate(GenomeID = gsub("/scratch/alpine/clbd1748/Australia/BradyStrainsGTDB/",
-                         "", GenomeID)) %>%
-  mutate(Same = SampleID == GenomeID) %>%
-  filter(SampleID %in% d_brady$sampleID)
-
-# Plot (will mostly be 1 to 1 but also other squares)
-sylph_strains_53 <- strains_sylph %>%
-  dplyr::select(SampleID, GenomeID, Sequence_abundance) %>%
-  pivot_wider(names_from = SampleID, values_from = Sequence_abundance) %>%
-  arrange("GenomeID") %>%
-  column_to_rownames(var = "GenomeID") %>%
-  dplyr::select(all_of(d_brady_ai_sort$sampleID)) %>%
-  t() %>%
-  as.data.frame() %>%
-  dplyr::select(all_of(d_brady_ai_sort$sampleID), Reference, everything()) %>%
-  t() %>%
-  as.data.frame()
-ann_cols <- data.frame(row.names = colnames(sylph_strains_53), 
-                       AI = d_brady_ai_sort$AI)
-ann_rows <- data.frame(row.names = rownames(sylph_strains_53)) %>%
-  mutate(Genome = ifelse(rownames(.) %in% d_brady$sampleID,
-                         "Strain",
-                         ifelse(rownames(.) == "Reference",
-                                "Reference", "Other GTDB")))
-ann_colors <- list(Genome = c("Strain" = "#00BFC4",
-                              "Reference" = "#F8766D",
-                              "Other GTDB" = "#C77CFF"))
-pheatmap(sylph_strains_53,
-         color = colorRampPalette(brewer.pal(n = 7, name = "Reds"))(100),
-         legend = T,
-         main = "            Brady Genomes % Abundance, n = 53",
-         cluster_rows = F,
-         cluster_cols = F,
-         angle_col = 90,
-         display_numbers = F,
-         number_color = "black",
-         annotation_col = ann_cols,
-         annotation_row = ann_rows,
-         annotation_colors = ann_colors,
-         fontsize_number = 10,
-         fontsize_row = 6,
-         fontsize_col = 6,
-         na_col = "white",
-         border_color = "white",
-         filename = "InitialFigs/Strains_wGTDB_Abund_53.png",
-         width = 8,
-         height = 7)
-dev.off()
-dev.set(dev.next())
-dev.set(dev.next())
-
-
-
-# 104
-strains_sylph <- read.delim("data/sylph_profile_bradystrainsGTDB_ani95.tsv") %>%
-  mutate(SampleID = gsub("/scratch/alpine/clbd1748/Australia/QC_reads/", "", Sample_file)) %>%
-  separate(SampleID, into = c("SampleID", "Junk1", "Junk2"), sep = "_") %>%
-  dplyr::select(-Junk1, -Junk2) %>%
-  mutate(GenomeID = gsub("/scratch/alpine/clbd1748/Australia/BradyStrainsGTDB/Brady_",
-                         "", Genome_file)) %>%
-  mutate(GenomeID = gsub(".fna",
-                         "", GenomeID)) %>%
-  mutate(GenomeID = gsub("/scratch/alpine/clbd1748/Australia/BradyStrainsGTDB/",
-                         "", GenomeID)) %>%
-  mutate(Same = SampleID == GenomeID)
-length(unique(strains_sylph$SampleID))
-
-# Plot (will mostly be 1 to 1 but also other squares)
-missings <- d %>%
-  filter(sampleID %notin% strains_sylph$SampleID)
-sylph_strains_104 <- strains_sylph %>%
-  dplyr::select(SampleID, GenomeID, Sequence_abundance) %>%
-  pivot_wider(names_from = SampleID, values_from = Sequence_abundance) %>%
-  arrange("GenomeID") %>%
-  column_to_rownames(var = "GenomeID") %>%
-  mutate(!!!set_names(rep(list(NA), length(missings$sampleID)), missings$sampleID)) %>%
-  dplyr::select(all_of(d_ai_sort$sampleID)) %>%
-  t() %>%
-  as.data.frame() %>%
-  dplyr::select(all_of(d_brady_ai_sort$sampleID), Reference, everything()) %>%
-  t() %>%
-  as.data.frame()
-ann_cols <- data.frame(row.names = colnames(sylph_strains_104), 
-                       AI = d_ai_sort$AI) %>%
-  mutate(StrainFinder = ifelse(rownames(.) %in% d_brady$sampleID,
-                               "Yes",
-                               "No"))
-ann_rows <- data.frame(row.names = rownames(sylph_strains_104)) %>%
-  mutate(Genome = ifelse(rownames(.) %in% d_brady$sampleID,
-                         "Strain",
-                         ifelse(rownames(.) == "Reference",
-                                "Reference", "Other GTDB")))
-ann_colors <- list(Genome = c("Strain" = "#00BFC4",
-                              "Reference" = "#F8766D",
-                              "Other GTDB" = "#C77CFF"),
-                   StrainFinder = c(No = "#F8766D",
-                                    Yes = "#619CFF"))
-pheatmap(sylph_strains_104,
-         color = colorRampPalette(brewer.pal(n = 7, name = "Reds"))(100),
-         legend = T,
-         main = "            Brady Genomes % Abundance, n = 104",
-         cluster_rows = F,
-         cluster_cols = F,
-         angle_col = 90,
-         display_numbers = F,
-         number_color = "black",
-         annotation_col = ann_cols,
-         annotation_row = ann_rows,
-         annotation_colors = ann_colors,
-         fontsize_number = 10,
-         fontsize_row = 6,
-         fontsize_col = 5,
-         na_col = "white",
-         border_color = "white",
-         filename = "InitialFigs/Strains_wGTDB_Abund_104.png",
-         width = 8,
-         height = 8)
-dev.off()
-dev.set(dev.next())
-dev.set(dev.next())
-
-
-
-#### 8. Sylph 1081 n 53 ####
-# Analyze Bradyrhizobium community composition across Australia
-# Use taxonomic profile from Sylph with 1081 Bradyrhizobium genomes
-# 212 Strains from StrainFinder plus 869 from full GTDB
-# Note on Sylph output:
-# Taxonomic_abundance: normalized taxonomic abundance as a percentage. Coverage-normalized - same as MetaPhlAn abundance
-# Sequence_abundance: normalized sequence abundance as a percentage. The "percentage of reads" assigned to each genome - same as Kraken abundance
-
-
-
-#### _Setup ####
-strains_sylph_raw <- read.delim("data/sylph_profile_brady1081.tsv") %>%
-  mutate(GenomeID = gsub("/scratch/alpine/clbd1748/Australia/Brady1081/",
-                         "", Genome_file))
-strains_sylph <- read.delim("data/sylph_profile_brady1081.tsv") %>%
-  mutate(SampleID = gsub("/scratch/alpine/clbd1748/POGENOM/Input_POGENOM/RAW_DATA/Reads/Aus/", 
-                         "", Sample_file)) %>%
-  mutate(SampleID = gsub("/scratch/alpine/clbd1748/Australia_copy/", 
-                         "", SampleID)) %>%
-  separate(SampleID, into = c("SampleID", "Junk1"), sep = "_") %>%
-  dplyr::select(-Junk1) %>%
-  mutate(GenomeID = gsub("/scratch/alpine/clbd1748/Australia/Brady1081/Brady_",
-                         "", Genome_file)) %>%
-  mutate(GenomeID = gsub(".fna.gz",
-                         "", GenomeID)) %>%
-  mutate(GenomeID = gsub("/scratch/alpine/clbd1748/Australia/Brady1081/",
-                         "", GenomeID)) %>%
-  #mutate(Same = SampleID == GenomeID) %>% # Need grep not ==
-  filter(SampleID %in% d_brady$sampleID)
-length(unique(strains_sylph$SampleID)) # 53 samples
-length(unique(strains_sylph$GenomeID)) # 118 genomes - need to get these and build tree!
-brady118 <- as.data.frame(unique(strains_sylph_raw$GenomeID))
-# write.table(brady118,
-#             "data/brady118.txt", sep = "\t", row.names = F, col.names = F)
-hist(strains_sylph$Eff_cov)
-plot(strains_sylph$Sequence_abundance, strains_sylph$Taxonomic_abundance)
-
-# Get info on these genomes (the 26 GTDB genomes)
-gtdb_26_names <- strains_sylph %>%
-  filter(grepl("GCA_|Reference", Genome_file)) %>%
-  filter(!duplicated(Genome_file)) %>%
-  mutate(GenomeID = gsub("Reference", "GCA_016616885.1", GenomeID))
-gtdb_26 <- bacGT %>%
-  subset(grepl(paste(gtdb_26_names$GenomeID, collapse="|"), ncbi_genbank_assembly_accession))
-table(gtdb_26$ncbi_isolation_source) # 12 soil, 3 nodule, 11 unknown
-table(gtdb_26$ncbi_genome_category)
-gtdb_26$ncbi_taxonomy
-gtdb_26$gtdb_taxonomy
-
-# Plot - use sequence abundance
-sylph_strains_53 <- strains_sylph %>%
-  dplyr::select(SampleID, GenomeID, Sequence_abundance) %>%
-  pivot_wider(names_from = SampleID, values_from = Sequence_abundance) %>%
-  mutate(Type = ifelse(grepl(paste(d_brady$sampleID, collapse = "|"), GenomeID),
-                         1,
-                         ifelse(GenomeID == "Reference",
-                                2, 3))) %>%
-  separate(GenomeID, remove = F, into = c("Col1", "Col2", "Col3")) %>%
-  mutate(Col1 = gsub("Reference", "aReference", Col1)) %>%
-  arrange(Type, match(Col1, d_brady_ai_sort$sampleID)) %>%
-  column_to_rownames(var = "GenomeID") %>%
-  dplyr::select(all_of(d_brady_ai_sort$sampleID))
-table(d_brady$vegetation_type)
-ann_cols <- data.frame(row.names = colnames(sylph_strains_53), 
-                       Aridity = d_brady_ai_sort$AI,
-                       Vegetation = d_brady_ai_sort$vegetation_type)
-ann_rows <- data.frame(row.names = rownames(sylph_strains_53)) %>%
-  mutate(Genome = ifelse(grepl(paste(d_brady$sampleID, collapse = "|"), rownames(.)),
-                         "Strain",
-                         ifelse(rownames(.) == "Reference",
-                                "Reference", "Other GTDB")))
-ann_colors <- list(Genome = c("Strain" = "#00BFC4",
-                              "Reference" = "#F8766D",
-                              "Other GTDB" = "#C77CFF"),
-                   Vegetation = c("Forest" = "darkgreen",
-                                  "Grassland" = "gold",
-                                  "Woodland" = "brown"))
-pheatmap(sylph_strains_53,
-         color = colorRampPalette(brewer.pal(n = 7, name = "Reds"))(100),
-         legend = T,
-         main = "            Bradyrhizobium Genomes % Abundance, n = 53",
-         cluster_rows = F,
-         cluster_cols = F,
-         angle_col = 90,
-         display_numbers = F,
-         number_color = "black",
-         annotation_col = ann_cols,
-         annotation_row = ann_rows,
-         annotation_colors = ann_colors,
-         fontsize_number = 10,
-         fontsize_row = 6,
-         fontsize_col = 6,
-         na_col = "white",
-         border_color = "white",
-         labels_row = gsub("_", " ", rownames(sylph_strains_53)),
-         filename = "InitialFigs/Brady_1081_abund.png",
-         width = 8,
-         height = 10)
-dev.off()
-dev.set(dev.next())
-dev.set(dev.next())
-
-# Import Tree
-# Fasttree
-brady118_tree <- read.tree("data/brady118_fasttree.tree")
-plot(brady118_tree)
-ggtree(brady118_tree)
-brady118_tree$tip.label
-brady118_tree$tip.label <- gsub(".fna", "", brady118_tree$tip.label)
-brady118_tree$tip.label <- gsub("Brady_", "", brady118_tree$tip.label)
-brady118_tree$tip.label <- gsub("_", " ", brady118_tree$tip.label)
-brady118_tree$tip.label
-tipcols <- c(rep("red", 34),
-             rep("black", 15),
-             rep("red", 4),
-             "blue",
-             rep("black", 10),
-             rep("red", 54))
-pdf("InitialFigs/Brady118_Fasttree_Bac120.pdf", width = 9, height = 7)
-ggtree(brady118_tree, linewidth = 0.1) +
-  geom_tiplab(size = 1.5, vjust = 0.5,
-              color = tipcols) +
-  geom_treescale() +
-  geom_nodelab(aes(label = label), size = 1)
-dev.off()
-
-# IQ-Tree
-brady118_tree <- read.tree("data/brady118_iqtree_ml.tree")
-plot(brady118_tree)
-ggtree(brady118_tree)
-brady118_tree$tip.label
-brady118_tree$tip.label <- gsub(".fna", "", brady118_tree$tip.label)
-brady118_tree$tip.label <- gsub("Brady_", "", brady118_tree$tip.label)
-brady118_tree$tip.label <- gsub("_", " ", brady118_tree$tip.label)
-brady118_tree$tip.label
-tipcols <- c(rep("red", 44),
-             "blue",
-             rep("black", 10),
-             rep("red", 25),
-             rep("black", 15),
-             rep("red", 23))
-pdf("InitialFigs/Brady118_IQtree_Bac120.pdf", width = 9, height = 7)
-ggtree(brady118_tree, linewidth = 0.1) +
-  geom_tiplab(size = 1.5, vjust = 0.5,
-              color = tipcols) +
-  geom_treescale() +
-  geom_nodelab(aes(label = label), size = 1)
-dev.off()
-
-
-
-#### _Comp ####
-# Composition and drivers, Bray-Curtis, Jaccard, Weighted UniFrac, Unweighted UniFrac
-sp_comp <- sylph_strains_53 %>%
-  replace(is.na(.), 0)
-input <- list()
-input$map_loaded <- d_brady_ai_sort
-rownames(input$map_loaded) <- d_brady_ai_sort$sampleID
-sum(d_brady_ai_sort$sampleID != names(sp_comp))
-input$data_loaded <- sp_comp
-input$taxonomy_loaded <- sp_comp %>%
-  mutate(taxonomy1 = "Bacteria",
-         taxonomy2 = "Proteobacteria",
-         taxonomy3 = "Alphaproteobacteria",
-         taxonomy4 = "Hyphomicrobiales",
-         taxonomy5 = "Nitrobacteraceae",
-         taxonomy6 = "Bradyrhizobium",
-         taxonomy7 = rownames(.)) %>%
-  dplyr::select(taxonomy1, taxonomy2, taxonomy3, taxonomy4,
-                taxonomy5, taxonomy6, taxonomy7)
-sum(rownames(input$data_loaded) != rownames(input$taxonomy_loaded))
-
-# Alpha
-input$map_loaded$rich <- specnumber(input$data_loaded, 
-                                    MARGIN = 2)
-input$map_loaded$shannon <- vegan::diversity(input$data_loaded, 
-                                             index = "shannon", 
-                                             MARGIN = 2)
-range(input$map_loaded$rich)
-range(input$map_loaded$shannon)
-pdf("InitialFigs/BradyComp_RichAI.pdf", width = 7, height = 5)
-ggplot(input$map_loaded, aes(AI, rich)) +
-  geom_point(size = 3, pch = 16, alpha = 0.5) +
-  geom_smooth(se = F) +
-  labs(x = "drier <= Aridity index => wetter",
-       y = "Number of genomes detected") +
-  scale_y_continuous(breaks = c(1,2,3,4,5,6,7,8)) +
-  theme_bw() +  
-  theme(axis.title = element_text(face = "bold", size = 12), 
-        axis.text = element_text(size = 10))
-dev.off()
-
-# Dissimilarity matrices
-bc <- calc_dm(input$data_loaded)
-ja <- calc_dm(input$data_loaded, "jaccard")
-
-# Import phylogenetic tree. Use Phyloseq to calculate weighted UniFrac distance
-otu <- phyloseq::otu_table(input$data_loaded, taxa_are_rows = T)
-tax <- phyloseq::tax_table(as.matrix(input$taxonomy_loaded))
-map <- phyloseq::sample_data(input$map_loaded)
-tree <- read_tree("data/brady118_fasttree.tree")
-is.rooted(tree) # FALSE. Tree is not rooted
-tree <- midpoint.root(tree)
-is.rooted(tree) # TRUE. Tree is now rooted at midpoint
-tree$tip.label
-tree$tip.label <- gsub(".fna", "", tree$tip.label)
-tree$tip.label <- gsub("Brady_", "", tree$tip.label)
-input.phy <- phyloseq::phyloseq(otu, tax, map, tree)
-Wun <- distance(input.phy, 
-                method = "wunifrac", 
-                type = "samples")
-un <- distance(input.phy, 
-                method = "unifrac", 
-                type = "samples")
-
-
-
-# PCoAs (for each distance matrix)
-pcoa <- cmdscale(bc, k = nrow(input$map_loaded) - 1, eig = T)
-d_env <- input$map_loaded %>%
-  dplyr::select(conductivity, nitrate_nitrogen, organic_carbon, 
-                bio1, bio12, AI, ph, latitude, longitude)
-set.seed(100)
-ef <- envfit(pcoa, d_env, permutations = 999, na.rm = TRUE)
-ef
-ordiplot(pcoa)
-plot(ef, cex = 0.5)
-multiplier <- ordiArrowMul(ef)
-multiplier
-vec.df <- as.data.frame(ef$vectors$arrows*sqrt(ef$vectors$r)) %>%
-  mutate(Dim1 = Dim1 * multiplier,
-         Dim2 = Dim2 * multiplier) %>%
-  mutate(variables = rownames(.)) %>%
-  filter(ef$vectors$pvals < 0.05) %>%
-  mutate(shortnames = "pH")
-pcoaA1 <- paste("PC1: ", round((eigenvals(pcoa)/sum(eigenvals(pcoa)))[1]*100, 1), "%")
-pcoaA2 <- paste("PC2: ", round((eigenvals(pcoa)/sum(eigenvals(pcoa)))[2]*100, 1), "%")
-input$map_loaded$Axis01 <- vegan::scores(pcoa)[,1]
-input$map_loaded$Axis02 <- vegan::scores(pcoa)[,2]
-pdf("InitialFigs/BradyComp_BC.pdf", width = 7, height = 5)
-ggplot(input$map_loaded, aes(Axis01, Axis02)) +
-  geom_point(size = 3, pch = 16, alpha = 0.5) +
-  geom_segment(data = vec.df,
-               aes(x = 0, xend = Dim1, y = 0, yend = Dim2),
-               arrow = arrow(length = unit(0.35, "cm")),
-               colour = "gray", alpha = 0.6,
-               inherit.aes = FALSE) + 
-  geom_text(data = vec.df,
-                  aes(x = Dim1, y = Dim2, label = shortnames),
-                  size = 4, color = "blue") +
-  labs(x = pcoaA1, 
-       y = pcoaA2,
-       colour = "Vegetation") +
-  scale_colour_viridis_d() +
-  ggtitle("Bray-Curtis") +
-  theme_bw() +  
-  theme(legend.position = "right",
-        axis.title = element_text(face = "bold", size = 12), 
-        axis.text = element_text(size = 10))
-dev.off()
-
-
-
-pcoa <- cmdscale(ja, k = nrow(input$map_loaded) - 1, eig = T)
-d_env <- input$map_loaded %>%
-  dplyr::select(conductivity, nitrate_nitrogen, organic_carbon, 
-                bio1, bio12, AI, ph, latitude, longitude)
-set.seed(100)
-ef <- envfit(pcoa, d_env, permutations = 999, na.rm = TRUE)
-ef
-ordiplot(pcoa)
-plot(ef, cex = 0.5)
-multiplier <- ordiArrowMul(ef)
-multiplier
-vec.df <- as.data.frame(ef$vectors$arrows*sqrt(ef$vectors$r)) %>%
-  mutate(Dim1 = Dim1 * multiplier,
-         Dim2 = Dim2 * multiplier) %>%
-  mutate(variables = rownames(.)) %>%
-  filter(ef$vectors$pvals < 0.05) %>%
-  mutate(shortnames = "pH")
-pcoaA1 <- paste("PC1: ", round((eigenvals(pcoa)/sum(eigenvals(pcoa)))[1]*100, 1), "%")
-pcoaA2 <- paste("PC2: ", round((eigenvals(pcoa)/sum(eigenvals(pcoa)))[2]*100, 1), "%")
-input$map_loaded$Axis01 <- vegan::scores(pcoa)[,1]
-input$map_loaded$Axis02 <- vegan::scores(pcoa)[,2]
-pdf("InitialFigs/BradyComp_Jac.pdf", width = 7, height = 5)
-ggplot(input$map_loaded, aes(Axis01, -Axis02)) +
-  geom_point(size = 3, pch = 16, alpha = 0.5) +
-  geom_segment(data = vec.df,
-               aes(x = 0, xend = Dim1, y = 0, yend = -Dim2),
-               arrow = arrow(length = unit(0.35, "cm")),
-               colour = "gray", alpha = 0.6,
-               inherit.aes = FALSE) + 
-  geom_text(data = vec.df,
-            aes(x = Dim1, y = -Dim2, label = shortnames),
-            size = 4, color = "blue") +
-  labs(x = pcoaA1, 
-       y = pcoaA2,
-       colour = "Vegetation") +
-  scale_colour_viridis_d() +
-  ggtitle("Jaccard") +
-  theme_bw() +  
-  theme(legend.position = "right",
-        axis.title = element_text(face = "bold", size = 12), 
-        axis.text = element_text(size = 10))
-dev.off()
-
-
-
-pcoa <- cmdscale(Wun, k = nrow(input$map_loaded) - 1, eig = T)
-d_env <- input$map_loaded %>%
-  dplyr::select(conductivity, nitrate_nitrogen, organic_carbon, 
-                bio1, bio12, AI, ph, latitude, longitude)
-set.seed(100)
-ef <- envfit(pcoa, d_env, permutations = 999, na.rm = TRUE)
-ef
-ordiplot(pcoa)
-plot(ef, cex = 0.5)
-multiplier <- ordiArrowMul(ef)
-multiplier
-vec.df <- as.data.frame(ef$vectors$arrows*sqrt(ef$vectors$r)) %>%
-  mutate(Dim1 = Dim1 * multiplier,
-         Dim2 = Dim2 * multiplier) %>%
-  mutate(variables = rownames(.)) %>%
-  filter(ef$vectors$pvals < 0.1) %>%
-  mutate(shortnames = c("Precip", "AI", "pH"))
-pcoaA1 <- paste("PC1: ", round((eigenvals(pcoa)/sum(eigenvals(pcoa)))[1]*100, 1), "%")
-pcoaA2 <- paste("PC2: ", round((eigenvals(pcoa)/sum(eigenvals(pcoa)))[2]*100, 1), "%")
-input$map_loaded$Axis01 <- vegan::scores(pcoa)[,1]
-input$map_loaded$Axis02 <- vegan::scores(pcoa)[,2]
-pdf("InitialFigs/BradyComp_Wun.pdf", width = 7, height = 5)
-ggplot(input$map_loaded, aes(Axis01, Axis02)) +
-  geom_point(size = 3, pch = 16, alpha = 0.5) +
-  geom_segment(data = vec.df,
-               aes(x = 0, xend = Dim1, y = 0, yend = Dim2),
-               arrow = arrow(length = unit(0.35, "cm")),
-               colour = "gray", alpha = 0.6,
-               inherit.aes = FALSE) + 
-  geom_text(data = vec.df,
-            aes(x = Dim1, y = Dim2, label = shortnames),
-            size = 4, color = "blue") +
-  labs(x = pcoaA1, 
-       y = pcoaA2,
-       colour = "Vegetation") +
-  scale_colour_viridis_d() +
-  ggtitle("Weighted UniFrac") +
-  theme_bw() +  
-  theme(legend.position = "right",
-        axis.title = element_text(face = "bold", size = 12), 
-        axis.text = element_text(size = 10))
-dev.off()
-
-
-
-pcoa <- cmdscale(un, k = nrow(input$map_loaded) - 1, eig = T)
-d_env <- input$map_loaded %>%
-  dplyr::select(conductivity, nitrate_nitrogen, organic_carbon, 
-                bio1, bio12, AI, ph, latitude, longitude)
-set.seed(100)
-ef <- envfit(pcoa, d_env, permutations = 999, na.rm = TRUE)
-ef
-ordiplot(pcoa)
-plot(ef, cex = 0.5)
-multiplier <- ordiArrowMul(ef)
-multiplier
-vec.df <- as.data.frame(ef$vectors$arrows*sqrt(ef$vectors$r)) %>%
-  mutate(Dim1 = Dim1 * multiplier,
-         Dim2 = Dim2 * multiplier) %>%
-  mutate(variables = rownames(.)) %>%
-  filter(ef$vectors$pvals < 0.1) %>%
-  mutate(shortnames = "pH")
-pcoaA1 <- paste("PC1: ", round((eigenvals(pcoa)/sum(eigenvals(pcoa)))[1]*100, 1), "%")
-pcoaA2 <- paste("PC2: ", round((eigenvals(pcoa)/sum(eigenvals(pcoa)))[2]*100, 1), "%")
-input$map_loaded$Axis01 <- vegan::scores(pcoa)[,1]
-input$map_loaded$Axis02 <- vegan::scores(pcoa)[,2]
-pdf("InitialFigs/BradyComp_un.pdf", width = 7, height = 5)
-ggplot(input$map_loaded, aes(Axis01, Axis02)) +
-  geom_point(size = 3, pch = 16, alpha = 0.5) +
-  geom_segment(data = vec.df,
-               aes(x = 0, xend = Dim1, y = 0, yend = Dim2),
-               arrow = arrow(length = unit(0.35, "cm")),
-               colour = "gray", alpha = 0.6,
-               inherit.aes = FALSE) + 
-  geom_text(data = vec.df,
-            aes(x = Dim1, y = Dim2, label = shortnames),
-            size = 4, color = "blue") +
-  labs(x = pcoaA1, 
-       y = pcoaA2,
-       colour = "Vegetation") +
-  scale_colour_viridis_d() +
-  ggtitle("Unweighted UniFrac") +
-  theme_bw() +  
-  theme(legend.position = "right",
-        axis.title = element_text(face = "bold", size = 12), 
-        axis.text = element_text(size = 10))
-dev.off()
-
-
-
-#### _dbRDA ####
-# Full dataset, no pH
-d_env <- input$map_loaded %>%
-  dplyr::select(conductivity, nitrate_nitrogen, organic_carbon, 
-                bio1, bio12, AI, latitude, longitude)
-
-mod0 <- dbrda(bc ~ 1, d_env)  # Model with intercept only
-mod1 <- dbrda(bc ~ ., d_env)  # Model with all explanatory variables
-mod <- ordistep(mod0, scope = formula(mod1))
-mod$anova # AI
-
-mod0 <- dbrda(ja ~ 1, d_env)  # Model with intercept only
-mod1 <- dbrda(ja ~ ., d_env)  # Model with all explanatory variables
-mod <- ordistep(mod0, scope = formula(mod1))
-mod$anova # Nothing
-
-mod0 <- dbrda(Wun ~ 1, d_env)  # Model with intercept only
-mod1 <- dbrda(Wun ~ ., d_env)  # Model with all explanatory variables
-mod <- ordistep(mod0, scope = formula(mod1))
-mod$anova # precip, carbon, longitude
-
-mod0 <- dbrda(un ~ 1, d_env)  # Model with intercept only
-mod1 <- dbrda(un ~ ., d_env)  # Model with all explanatory variables
-mod <- ordistep(mod0, scope = formula(mod1))
-mod$anova # 
-
-# Subset dataset, pH included
-d_env <- input$map_loaded %>%
-  dplyr::select(conductivity, nitrate_nitrogen, organic_carbon, 
-                bio1, bio12, AI, latitude, longitude, ph)
-sum(is.na(d_env))
-env_nona <- d_env %>%
-  drop_na()
-input_sub <- filter_data(input,
-                         filter_cat = "sampleID",
-                         keep_vals = rownames(env_nona))
-bc_sub <- calc_dm(input_sub$data_loaded)
-ja_sub <- calc_dm(input_sub$data_loaded, "jaccard")
-otu <- phyloseq::otu_table(input_sub$data_loaded, taxa_are_rows = T)
-tax <- phyloseq::tax_table(as.matrix(input_sub$taxonomy_loaded))
-map <- phyloseq::sample_data(input_sub$map_loaded)
-tree <- read_tree("data/brady118_fasttree.tree")
-is.rooted(tree) # FALSE. Tree is not rooted
-tree <- midpoint.root(tree)
-is.rooted(tree) # TRUE. Tree is now rooted at midpoint
-tree$tip.label
-tree$tip.label <- gsub(".fna", "", tree$tip.label)
-tree$tip.label <- gsub("Brady_", "", tree$tip.label)
-tl <- as.data.frame(tree$tip.label) %>%
-  set_names("tip.label") %>%
-  filter(tip.label %notin% rownames(input_sub$data_loaded))
-tree_pruned <- drop.tip(tree,
-                        tip = tl$tip.label)
-input.phy <- phyloseq::phyloseq(otu, tax, map, tree_pruned)
-Wun_sub <- distance(input.phy, 
-                    method = "wunifrac", 
-                    type = "samples")
-un_sub <- distance(input.phy, 
-                   method = "unifrac", 
-                   type = "samples")
-
-mod0 <- dbrda(bc_sub ~ 1, env_nona)  # Model with intercept only
-mod1 <- dbrda(bc_sub ~ ., env_nona)  # Model with all explanatory variables
-mod <- ordistep(mod0, scope = formula(mod1))
-mod$anova # pH
-
-mod0 <- dbrda(ja_sub ~ 1, env_nona)  # Model with intercept only
-mod1 <- dbrda(ja_sub ~ ., env_nona)  # Model with all explanatory variables
-mod <- ordistep(mod0, scope = formula(mod1))
-mod$anova # pH
-
-mod0 <- dbrda(Wun_sub ~ 1, env_nona)  # Model with intercept only
-mod1 <- dbrda(Wun_sub ~ ., env_nona)  # Model with all explanatory variables
-mod <- ordistep(mod0, scope = formula(mod1))
-mod$anova # 
-
-mod0 <- dbrda(un_sub ~ 1, env_nona)  # Model with intercept only
-mod1 <- dbrda(un_sub ~ ., env_nona)  # Model with all explanatory variables
-mod <- ordistep(mod0, scope = formula(mod1))
-mod$anova # 
-
-
-
-#### _Varpart ####
-# varpart can take 2, 3, or 4 explanatory matrices
-# Partition variation into geography, climate, soil
-mod <- varpart(bc, 
-               ~ latitude + longitude, 
-               ~ AI + bio1 + bio12,
-               ~ conductivity + nitrate_nitrogen + organic_carbon,
-               data = d_env)
-mod
-summary(mod)
-plot(mod, bg = 2:4, Xnames = c('Geog.', 'Clim.', 'Soil'))
-
-mod <- varpart(ja, 
-               ~ latitude + longitude, 
-               ~ AI + bio1 + bio12,
-               ~ conductivity + nitrate_nitrogen + organic_carbon,
-               data = d_env)
-mod
-summary(mod)
-plot(mod, bg = 2:4, Xnames = c('Geog.', 'Clim.', 'Soil'))
-
-
-mod <- varpart(Wun, 
-                   ~ latitude + longitude, 
-                   ~ AI + bio1 + bio12,
-                   ~ conductivity + nitrate_nitrogen + organic_carbon,
-               data = d_env)
-mod
-summary(mod)
-pdf("InitialFigs/BradyComp_varpart.pdf", width = 7, height = 5)
-plot(mod, bg = 2:4, Xnames = c('Geog.', 'Clim.', 'Soil'))
-dev.off()
-
-mod <- varpart(un, 
-               ~ latitude + longitude, 
-               ~ AI + bio1 + bio12,
-               ~ conductivity + nitrate_nitrogen + organic_carbon,
-               data = d_env)
-mod
-summary(mod)
-plot(mod, bg = 2:4, Xnames = c('Geog.', 'Clim.', 'Soil'))
-
-
-
-#### _Mantel ####
-# Need to remake geog.dist and env.dist, recycle code from above with input$map_loaded
-# Run Partial Mantels to control for one and test the other
-# Geographic distance
-dist.geog <- geosphere::distm(cbind(input$map_loaded$longitude, input$map_loaded$latitude),
-                              fun = distHaversine)
-rownames(dist.geog) <- input$map_loaded$sampleID
-colnames(dist.geog) <- input$map_loaded$sampleID
-dist.geog[upper.tri(dist.geog, diag = TRUE)] <- NA
-hist(dist.geog)
-
-# Environmental distance
-d_brady_env <- input$map_loaded %>%
-  dplyr::select(sampleID, all_of(env_vars))
-n_na <- c()
-for (i in 1:ncol(d_brady_env)) {
-  n_na[i] <- sum(is.na(d_brady_env[,i]))
-}
-n_na
-d_brady_env <- d_brady_env %>%
-  dplyr::select(where(~ all(!is.na(.)))) %>%
-  dplyr::select(-sampleID, -latitude, -longitude)
-# Conductivity, nitrate, carbon, temp, precip, AI
-dist.env <- as.matrix(dist(d_brady_env, method = "euclidean", diag = FALSE, upper = FALSE))
-rownames(dist.env) <- d_brady$sampleID
-colnames(dist.env) <- d_brady$sampleID
-dist.env[upper.tri(dist.env, diag = TRUE)] <- NA
-hist(dist.env)
-
-set.seed(100)
-mantel(bc, dist.env, permutations = 2000)
-set.seed(100)
-mantel.partial(bc, dist.env, dist.geog, permutations = 2000)
-set.seed(100)
-mantel(bc, dist.geog, permutations = 2000)
-set.seed(100)
-mantel.partial(bc, dist.geog, dist.env, permutations = 2000)
-
-set.seed(100)
-mantel(ja, dist.env, permutations = 2000)
-set.seed(100)
-mantel.partial(ja, dist.env, dist.geog, permutations = 2000)
-set.seed(100)
-mantel(ja, dist.geog, permutations = 2000)
-set.seed(100)
-mantel.partial(ja, dist.geog, dist.env, permutations = 2000)
-
-set.seed(100)
-mantel(Wun, dist.env, permutations = 2000)
-set.seed(100)
-mantel.partial(Wun, dist.env, dist.geog, permutations = 2000)
-set.seed(100)
-mantel(Wun, dist.geog, permutations = 2000)
-set.seed(100)
-mantel.partial(Wun, dist.geog, dist.env, permutations = 2000)
-
-set.seed(100)
-mantel(un, dist.env, permutations = 2000)
-set.seed(100)
-mantel.partial(un, dist.env, dist.geog, permutations = 2000)
-set.seed(100)
-mantel(un, dist.geog, permutations = 2000)
-set.seed(100)
-mantel.partial(un, dist.geog, dist.env, permutations = 2000)
-
-pdf("InitialFigs/BradyComp_BC_geog.pdf", width = 7, height = 5)
-qplot(as.dist(dist.geog), bc, geom = c("point","smooth"), alpha = I(0.1)) +
-  labs(x = "Geographic Distance (m)",
-       y = "Bray-Curtis Dissimilarity") +
-  ylim(0, 1) +
-  theme_bw() +
-  theme(axis.title = element_text(face = "bold", size = 12), 
-        axis.text = element_text(size = 10),
-        plot.margin = unit(c(0.1,0.1,0.1,0.15),"cm"))
-dev.off()
-
-qplot(as.dist(dist.geog), Wun, geom = c("point","smooth"), alpha = I(0.1)) +
-  labs(x = "Geographic Distance (m)",
-       y = "Weighted UniFrac") +
-  ylim(0, 1) +
-  theme_bw() +
-  theme(axis.title = element_text(face = "bold", size = 12), 
-        axis.text = element_text(size = 10),
-        plot.margin = unit(c(0.1,0.1,0.1,0.15),"cm"))
-
-
-
-#### _GDM ####
-# Again, test geog.dist and env.dist
-
-# Remake as full, not just lower triangle
-dist.env <- as.matrix(dist(d_brady_env, method = "euclidean", diag = FALSE, upper = FALSE))
-rownames(dist.env) <- d_brady$sampleID
-colnames(dist.env) <- d_brady$sampleID
-
-# GDM - BC
-sum(rownames(as.matrix(bc)) != input$map_loaded$sampleID)
-gdm.sampID <- rownames(as.matrix(bc))
-bacteria.distance.v.mat.gdm <- cbind(gdm.sampID, as.matrix(bc))
-geography.distance.v.mat.gdm <- cbind(gdm.sampID, dist.geog)
-env.distance.v.mat.gdm <- cbind(gdm.sampID, dist.env)
-dim(bacteria.distance.v.mat.gdm)
-dim(geography.distance.v.mat.gdm)
-dim(env.distance.v.mat.gdm)
-input$map_loaded$gdm.sampID <- input$map_loaded$sampleID
-gdm.data <- dplyr::select(input$map_loaded, gdm.sampID, latitude, longitude)
-gdm.bray <- formatsitepair(bioData = bacteria.distance.v.mat.gdm,
-                           bioFormat = 3,
-                           siteColumn = "gdm.sampID",
-                           XColumn = "longitude",
-                           YColumn = "latitude",
-                           predData = gdm.data,
-                           distPreds = list(env.distance.v.mat.gdm))
-gdm.1 <- gdm(gdm.bray, geo = TRUE) # The algorithm was unable to fit a model to your data.
-
-# GDM - Jaccard
-sum(rownames(as.matrix(ja)) != input$map_loaded$sampleID)
-gdm.sampID <- rownames(as.matrix(ja))
-bacteria.distance.v.mat.gdm <- cbind(gdm.sampID, as.matrix(ja))
-geography.distance.v.mat.gdm <- cbind(gdm.sampID, dist.geog)
-env.distance.v.mat.gdm <- cbind(gdm.sampID, dist.env)
-dim(bacteria.distance.v.mat.gdm)
-dim(geography.distance.v.mat.gdm)
-dim(env.distance.v.mat.gdm)
-input$map_loaded$gdm.sampID <- input$map_loaded$sampleID
-gdm.data <- dplyr::select(input$map_loaded, gdm.sampID, latitude, longitude)
-gdm.jac <- formatsitepair(bioData = bacteria.distance.v.mat.gdm,
-                           bioFormat = 3,
-                           siteColumn = "gdm.sampID",
-                           XColumn = "longitude",
-                           YColumn = "latitude",
-                           predData = gdm.data,
-                           distPreds = list(env.distance.v.mat.gdm))
-gdm.1 <- gdm(gdm.jac, geo = TRUE) # The algorithm was unable to fit a model to your data.
-
-# GDM - Weighted UniFrac
-sum(rownames(as.matrix(Wun)) != input$map_loaded$sampleID)
-gdm.sampID <- rownames(as.matrix(Wun))
-bacteria.distance.v.mat.gdm <- cbind(gdm.sampID, as.matrix(Wun))
-geography.distance.v.mat.gdm <- cbind(gdm.sampID, dist.geog)
-env.distance.v.mat.gdm <- cbind(gdm.sampID, dist.env)
-dim(bacteria.distance.v.mat.gdm)
-dim(geography.distance.v.mat.gdm)
-dim(env.distance.v.mat.gdm)
-input$map_loaded$gdm.sampID <- input$map_loaded$sampleID
-gdm.data <- dplyr::select(input$map_loaded, gdm.sampID, latitude, longitude)
-gdm.Wun <- formatsitepair(bioData = bacteria.distance.v.mat.gdm,
-                          bioFormat = 3,
-                          siteColumn = "gdm.sampID",
-                          XColumn = "longitude",
-                          YColumn = "latitude",
-                          predData = gdm.data,
-                          distPreds = list(env.distance.v.mat.gdm))
-gdm.1 <- gdm(gdm.Wun, geo = TRUE) # Worked!
-summary(gdm.1)
-# Variable Importance
-gdm.varImp(gdm.Wun, geo = TRUE)
-
-# GDM - UniFrac
-sum(rownames(as.matrix(un)) != input$map_loaded$sampleID)
-gdm.sampID <- rownames(as.matrix(un))
-bacteria.distance.v.mat.gdm <- cbind(gdm.sampID, as.matrix(un))
-geography.distance.v.mat.gdm <- cbind(gdm.sampID, dist.geog)
-env.distance.v.mat.gdm <- cbind(gdm.sampID, dist.env)
-dim(bacteria.distance.v.mat.gdm)
-dim(geography.distance.v.mat.gdm)
-dim(env.distance.v.mat.gdm)
-input$map_loaded$gdm.sampID <- input$map_loaded$sampleID
-gdm.data <- dplyr::select(input$map_loaded, gdm.sampID, latitude, longitude)
-gdm.un <- formatsitepair(bioData = bacteria.distance.v.mat.gdm,
-                         bioFormat = 3,
-                         siteColumn = "gdm.sampID",
-                         XColumn = "longitude",
-                         YColumn = "latitude",
-                         predData = gdm.data,
-                         distPreds = list(env.distance.v.mat.gdm))
-gdm.1 <- gdm(gdm.un, geo = TRUE) # The algorithm was unable to fit a model to your data.
-
-
-
-#### 9. Sylph 993 n 104 ####
-# Reran Sylph but removed Strain 4 and GTDB with > 13 missing bac120
-# Run on all 104 samples not just 53
-# Make tree with those detected by Sylph
-# Rerun code from section 8 with the new input data, new UniFrac
-
-#### _Setup ####
-strains_sylph_raw <- read.delim("data/sylph_profile_brady993_n104.tsv") %>%
-  mutate(GenomeID = gsub("/scratch/alpine/clbd1748/Australia_copy/Brady993/",
-                         "", Genome_file))
-strains_sylph <- read.delim("data/sylph_profile_brady993_n104.tsv") %>%
-  mutate(SampleID = gsub("/scratch/alpine/clbd1748/Australia_copy/QC_reads/", 
-                         "", Sample_file)) %>%
-  mutate(SampleID = gsub("/scratch/alpine/clbd1748/Australia_copy/", 
-                         "", SampleID)) %>%
-  separate(SampleID, into = c("SampleID", "Junk1", "Junk2"), sep = "_") %>%
-  dplyr::select(-Junk1, -Junk2) %>%
-  mutate(GenomeID = gsub("/scratch/alpine/clbd1748/Australia_copy/Brady993/Brady_",
-                         "", Genome_file)) %>%
-  mutate(GenomeID = gsub(".fna.gz",
-                         "", GenomeID)) %>%
-  mutate(GenomeID = gsub("/scratch/alpine/clbd1748/Australia_copy/Brady993/",
-                         "", GenomeID))
-length(unique(strains_sylph$SampleID)) # 92/104 samples
-length(unique(strains_sylph$GenomeID)) # 134/993 genomes - need to get these and build tree!
-sort(unique(strains_sylph$GenomeID)) # 89 strains, 
-brady134 <- as.data.frame(unique(strains_sylph_raw$GenomeID))
-# write.table(brady134,
-#             "data/brady134.txt", sep = "\t", row.names = F, col.names = F)
-hist(strains_sylph$Eff_cov)
-plot(strains_sylph$Sequence_abundance, strains_sylph$Taxonomic_abundance)
-
-# Get info on these genomes (the 45 GTDB genomes) and Brady genomes in general
-gtdb_brady <- bacGT %>%
-  filter(grepl("Bradyrhizobium", gtdb_taxonomy))
-table(gtdb_brady$ncbi_genome_category) # 85 mags, 784 isolates
-table(gtdb_brady$ncbi_isolation_source)
-table(gtdb_brady$gtdb_representative) # 278 reps
-hist(gtdb_brady$gc_percentage)
-hist(gtdb_brady$genome_size)
-gtdb_45_names <- strains_sylph %>%
-  filter(grepl("GCA_|Reference", Genome_file)) %>%
-  filter(!duplicated(Genome_file)) %>%
-  mutate(GenomeID = gsub("Reference", "GCA_016616885.1", GenomeID))
-gtdb_45 <- bacGT %>%
-  subset(grepl(paste(gtdb_45_names$GenomeID, collapse="|"), ncbi_genbank_assembly_accession))
-table(gtdb_45$ncbi_isolation_source) # 13 soil, 17 nodule, 1 feces, 14 unknown
-table(gtdb_45$ncbi_genome_category)
-gtdb_45$ncbi_taxonomy
-gtdb_45$gtdb_taxonomy
-bac120_sub$name3 <- gsub("Reference", "GCA_016616885.1", bac120_sub$name2)
-tax <- bacGT %>%
-  filter(ncbi_genbank_assembly_accession %in% bac120_sub$name3) %>%
-  dplyr::select(ncbi_genbank_assembly_accession, gtdb_taxonomy) %>%
-  mutate(gtdb_taxonomy = gsub("d__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("p__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("c__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("o__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("f__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("g__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("s__", "", gtdb_taxonomy)) %>%
-  separate(gtdb_taxonomy, sep = ";", into = c("Domain", "Phylum", "Class", "Order",
-                                              "Family", "Genus", "Species")) %>%
-  dplyr::select(ncbi_genbank_assembly_accession, Species)
-
-# Plot - use sequence abundance
-d_sylph <- d %>%
-  filter(sampleID %in% strains_sylph$SampleID)
-d_sylph_ai_sort <- d_sylph %>%
-  arrange(AI)
-sylph_strains_104 <- strains_sylph %>%
-  dplyr::select(SampleID, GenomeID, Sequence_abundance) %>%
-  pivot_wider(names_from = SampleID, values_from = Sequence_abundance) %>%
-  mutate(Type = ifelse(grepl(paste(d_sylph$sampleID, collapse = "|"), GenomeID),
-                       1,
-                       ifelse(GenomeID == "Reference",
-                              2, 3))) %>%
-  separate(GenomeID, remove = F, into = c("Col1", "Col2", "Col3")) %>%
-  mutate(Col1 = gsub("Reference", "aReference", Col1)) %>%
-  arrange(Type, match(Col1, d_sylph_ai_sort$sampleID)) %>%
-  column_to_rownames(var = "GenomeID") %>%
-  dplyr::select(all_of(d_sylph_ai_sort$sampleID))
-table(d_sylph_ai_sort$vegetation_type)
-ann_cols <- data.frame(row.names = colnames(sylph_strains_104), 
-                       Aridity = d_sylph_ai_sort$AI,
-                       Vegetation = d_sylph_ai_sort$vegetation_type)
-ann_rows <- data.frame(row.names = rownames(sylph_strains_104)) %>%
-  mutate(Genome = ifelse(grepl(paste(d_sylph$sampleID, collapse = "|"), rownames(.)),
-                         "Strain",
-                         ifelse(grepl("Reference", rownames(.)),
-                                "Reference", "Other GTDB")))
-table(ann_rows$Genome) # 92 Strain, 89 GTDB
-ann_colors <- list(Genome = c("Strain" = "#00BFC4",
-                              "Reference" = "#F8766D",
-                              "Other GTDB" = "#C77CFF"),
-                   Vegetation = c("Forest" = "darkgreen",
-                                  "Shrubland" = "chartreuse3",
-                                  "Woodland" = "brown",
-                                  "Grassland" = "gold",
-                                  "Savannah" = "darkgoldenrod",
-                                  "Heathland" = "purple"))
-pheatmap(sylph_strains_104,
-         color = colorRampPalette(brewer.pal(n = 7, name = "Reds"))(100),
-         legend = T,
-         main = "            Bradyrhizobium Genomes % Abundance, n = 92/104",
-         cluster_rows = F,
-         cluster_cols = F,
-         angle_col = 90,
-         display_numbers = F,
-         number_color = "black",
-         annotation_col = ann_cols,
-         annotation_row = ann_rows,
-         annotation_colors = ann_colors,
-         fontsize_number = 10,
-         fontsize_row = 6,
-         fontsize_col = 6,
-         na_col = "white",
-         border_color = "white",
-         labels_row = gsub("_", " ", rownames(sylph_strains_104)),
-         filename = "InitialFigs/Brady_993_abund104.png",
-         width = 8,
-         height = 10)
-dev.off()
-dev.set(dev.next())
-dev.set(dev.next())
-
-# Big Tree
-sylph_detected <- brady134 %>%
-  set_names("GenomeID") %>%
-  mutate(GenomeID = gsub(".fna.gz", "", GenomeID)) %>%
-  mutate(GenomeID = gsub("Brady_", "", GenomeID))
-#brady993_tree <- read.tree("data/brady993_fasttree.tree")
-brady993_tree <- read.tree("data/brady993_fasttree_nogap.tree")
-ggtree(brady993_tree)
-brady993_tree$tip.label
-brady993_tree$tip.label <- gsub(".fna", "", brady993_tree$tip.label)
-brady993_tree$tip.label <- gsub("Brady_", "", brady993_tree$tip.label)
-sum(sylph_detected$GenomeID %in% brady993_tree$tip.label) # 113
-tipcols <- ifelse(brady993_tree$tip.label %in% sylph_detected$GenomeID,
-                  "Detected",
-                  "Not detected")
-brady993_tree$tip.cols <- tipcols
-tc <- data.frame(GenomeID = brady993_tree$tip.label,
-                 Sylph = brady993_tree$tip.cols) %>%
-  left_join(., tax, by = c("GenomeID" = "ncbi_genbank_assembly_accession")) %>%
-  mutate(Species = coalesce(Species, GenomeID)) %>%
-  mutate(Species = gsub("Reference", "Bradyrhizobium diazoefficiens_F (Reference)", Species))
-tcd <- tc %>%
-  filter(Sylph == "Detected")
-pdf("InitialFigs/Brady993_Fasttree_Bac120_2409AA.pdf", width = 8.5, height = 17)
-ggtree(brady993_tree, linewidth = 0.1)  %<+% tc +
-  geom_tiplab(size = 0.5, vjust = 0.5, aes(color = Sylph, label = Species)) +
-  #geom_tippoint(aes(shape = Sylph, color = Sylph)) +
-  scale_color_manual(values = c("red", "grey50")) +
-  geom_treescale() +
-  geom_nodelab(aes(label = label), size = 0.5) +
-  guides(color = guide_legend(override.aes = list(size = 5))) +
-  theme(legend.position = c(0.7, 0.3))
-dev.off()
-
-# Small Tree
-brady134_tree <- read.tree("data/brady134_fasttree_nogap.tree")
-ggtree(brady134_tree)
-brady134_tree$tip.label
-brady134_tree$tip.label <- gsub(".fna", "", brady134_tree$tip.label)
-brady134_tree$tip.label <- gsub("Brady_", "", brady134_tree$tip.label)
-sum(sylph_detected$GenomeID %in% brady134_tree$tip.label) # 134
-tc <- data.frame(GenomeID = brady134_tree$tip.label) %>%
-  left_join(., tax, by = c("GenomeID" = "ncbi_genbank_assembly_accession")) %>%
-  mutate(Species = coalesce(Species, GenomeID)) %>%
-  mutate(Species = gsub("Reference", "Bradyrhizobium diazoefficiens_F (Reference)", Species))
-pdf("InitialFigs/Brady134_Fasttree_Bac120_2971AA.pdf", width = 8.5, height = 17)
-ggtree(brady134_tree, linewidth = 0.1)  %<+% tc +
-  geom_tiplab(size = 1, vjust = 0.5, aes(label = Species)) +
-  geom_treescale() +
-  geom_nodelab(aes(label = label), size = 0.5) +
-  guides(color = guide_legend(override.aes = list(size = 5))) +
-  theme(legend.position = c(0.7, 0.3))
-dev.off()
-
-
-
-#### _Comp ####
-# Composition and drivers, Bray-Curtis, Jaccard, Weighted UniFrac, Unweighted UniFrac
-sp_comp <- sylph_strains_104 %>%
-  replace(is.na(.), 0)
-input <- list()
-input$map_loaded <- d_sylph_ai_sort
-rownames(input$map_loaded) <- d_sylph_ai_sort$sampleID
-sum(d_sylph_ai_sort$sampleID != names(sp_comp))
-input$data_loaded <- sp_comp
-input$taxonomy_loaded <- sp_comp %>%
-  mutate(taxonomy1 = "Bacteria",
-         taxonomy2 = "Proteobacteria",
-         taxonomy3 = "Alphaproteobacteria",
-         taxonomy4 = "Hyphomicrobiales",
-         taxonomy5 = "Nitrobacteraceae",
-         taxonomy6 = "Bradyrhizobium",
-         taxonomy7 = rownames(.)) %>%
-  dplyr::select(taxonomy1, taxonomy2, taxonomy3, taxonomy4,
-                taxonomy5, taxonomy6, taxonomy7)
-sum(rownames(input$data_loaded) != rownames(input$taxonomy_loaded))
-
-# Alpha
-input$map_loaded$rich <- specnumber(input$data_loaded, 
-                                    MARGIN = 2)
-input$map_loaded$shannon <- vegan::diversity(input$data_loaded, 
-                                             index = "shannon", 
-                                             MARGIN = 2)
-range(input$map_loaded$rich)
-range(input$map_loaded$shannon)
-pdf("InitialFigs/BradyComp_RichAI.pdf", width = 7, height = 5)
-ggplot(input$map_loaded, aes(AI, rich)) +
-  geom_point(size = 3, pch = 16, alpha = 0.5) +
-  geom_smooth(se = F) +
-  labs(x = "drier <= Aridity index => wetter",
-       y = "Number of genomes detected") +
-  scale_y_continuous(breaks = c(1,2,3,4,5,6,7,8)) +
-  theme_bw() +  
-  theme(axis.title = element_text(face = "bold", size = 12), 
-        axis.text = element_text(size = 10))
-dev.off()
-
-# Dissimilarity matrices
-bc <- calc_dm(input$data_loaded)
-ja <- calc_dm(input$data_loaded, "jaccard")
-
-# Import phylogenetic tree. Use Phyloseq to calculate weighted UniFrac distance
-otu <- phyloseq::otu_table(input$data_loaded, taxa_are_rows = T)
-tax <- phyloseq::tax_table(as.matrix(input$taxonomy_loaded))
-map <- phyloseq::sample_data(input$map_loaded)
-tree <- read_tree("data/brady134_fasttree_nogap.tree")
-is.rooted(tree) # FALSE. Tree is not rooted
-tree <- midpoint.root(tree)
-is.rooted(tree) # TRUE. Tree is now rooted at midpoint
-tree$tip.label
-tree$tip.label <- gsub(".fna", "", tree$tip.label)
-tree$tip.label <- gsub("Brady_", "", tree$tip.label)
-input.phy <- phyloseq::phyloseq(otu, tax, map, tree)
-Wun <- distance(input.phy, 
-                method = "wunifrac", 
-                type = "samples")
-un <- distance(input.phy, 
-               method = "unifrac", 
-               type = "samples")
-
-
-
-# PCoAs (for each distance matrix)
-pcoa <- cmdscale(bc, k = nrow(input$map_loaded) - 1, eig = T)
-d_env <- input$map_loaded %>%
-  dplyr::select(conductivity, nitrate_nitrogen, organic_carbon, 
-                bio1, bio12, AI, ph, latitude, longitude)
-set.seed(100)
-ef <- envfit(pcoa, d_env, permutations = 999, na.rm = TRUE)
-ef
-ordiplot(pcoa)
-plot(ef, cex = 0.5, p.max = 0.05)
-multiplier <- ordiArrowMul(ef)
-multiplier
-vec.df <- as.data.frame(ef$vectors$arrows*sqrt(ef$vectors$r)) %>%
-  mutate(Dim1 = Dim1 * multiplier,
-         Dim2 = Dim2 * multiplier) %>%
-  mutate(variables = rownames(.)) %>%
-  filter(ef$vectors$pvals < 0.05) %>%
-  mutate(shortnames = c("NO3", "C", "Temp", "Precip", "AI", "pH", "Long."))
-pcoaA1 <- paste("PC1: ", round((eigenvals(pcoa)/sum(eigenvals(pcoa)))[1]*100, 1), "%")
-pcoaA2 <- paste("PC2: ", round((eigenvals(pcoa)/sum(eigenvals(pcoa)))[2]*100, 1), "%")
-input$map_loaded$Axis01 <- vegan::scores(pcoa)[,1]
-input$map_loaded$Axis02 <- vegan::scores(pcoa)[,2]
-pdf("InitialFigs/BradyComp_BC.pdf", width = 7, height = 5)
-ggplot(input$map_loaded, aes(Axis01, Axis02)) +
-  geom_point(size = 3, pch = 16, alpha = 0.5) +
-  geom_segment(data = vec.df,
-               aes(x = 0, xend = Dim1, y = 0, yend = Dim2),
-               arrow = arrow(length = unit(0.35, "cm")),
-               colour = "gray", alpha = 0.6,
-               inherit.aes = FALSE) + 
-  geom_text(data = vec.df,
-            aes(x = Dim1, y = Dim2, label = shortnames),
-            size = 4, color = "blue") +
-  labs(x = pcoaA1, 
-       y = pcoaA2,
-       colour = "Vegetation") +
-  scale_colour_viridis_d() +
-  ggtitle("Bray-Curtis") +
-  theme_bw() +  
-  theme(legend.position = "right",
-        axis.title = element_text(face = "bold", size = 12), 
-        axis.text = element_text(size = 10))
-dev.off()
-
-
-
-pcoa <- cmdscale(ja, k = nrow(input$map_loaded) - 1, eig = T)
-d_env <- input$map_loaded %>%
-  dplyr::select(conductivity, nitrate_nitrogen, organic_carbon, 
-                bio1, bio12, AI, ph, latitude, longitude)
-set.seed(100)
-ef <- envfit(pcoa, d_env, permutations = 999, na.rm = TRUE)
-ef
-ordiplot(pcoa)
-plot(ef, cex = 0.5, p.max = 0.05)
-multiplier <- ordiArrowMul(ef)
-multiplier
-vec.df <- as.data.frame(ef$vectors$arrows*sqrt(ef$vectors$r)) %>%
-  mutate(Dim1 = Dim1 * multiplier,
-         Dim2 = Dim2 * multiplier) %>%
-  mutate(variables = rownames(.)) %>%
-  filter(ef$vectors$pvals < 0.05) %>%
-  mutate(shortnames = c("NO3", "C", "Temp", "Precip", "AI", "pH", "Long."))
-pcoaA1 <- paste("PC1: ", round((eigenvals(pcoa)/sum(eigenvals(pcoa)))[1]*100, 1), "%")
-pcoaA2 <- paste("PC2: ", round((eigenvals(pcoa)/sum(eigenvals(pcoa)))[2]*100, 1), "%")
-input$map_loaded$Axis01 <- vegan::scores(pcoa)[,1]
-input$map_loaded$Axis02 <- vegan::scores(pcoa)[,2]
-pdf("InitialFigs/BradyComp_Jac.pdf", width = 7, height = 5)
-ggplot(input$map_loaded, aes(Axis01, -Axis02)) +
-  geom_point(size = 3, pch = 16, alpha = 0.5) +
-  geom_segment(data = vec.df,
-               aes(x = 0, xend = Dim1, y = 0, yend = -Dim2),
-               arrow = arrow(length = unit(0.35, "cm")),
-               colour = "gray", alpha = 0.6,
-               inherit.aes = FALSE) + 
-  geom_text(data = vec.df,
-            aes(x = Dim1, y = -Dim2, label = shortnames),
-            size = 4, color = "blue") +
-  labs(x = pcoaA1, 
-       y = pcoaA2,
-       colour = "Vegetation") +
-  scale_colour_viridis_d() +
-  ggtitle("Jaccard") +
-  theme_bw() +  
-  theme(legend.position = "right",
-        axis.title = element_text(face = "bold", size = 12), 
-        axis.text = element_text(size = 10))
-dev.off()
-
-
-
-pcoa <- cmdscale(Wun, k = nrow(input$map_loaded) - 1, eig = T)
-d_env <- input$map_loaded %>%
-  dplyr::select(conductivity, nitrate_nitrogen, organic_carbon, 
-                bio1, bio12, AI, ph, latitude, longitude)
-set.seed(100)
-ef <- envfit(pcoa, d_env, permutations = 999, na.rm = TRUE)
-ef
-ordiplot(pcoa)
-plot(ef, cex = 0.5, p.max = 0.05)
-multiplier <- ordiArrowMul(ef)
-multiplier
-vec.df <- as.data.frame(ef$vectors$arrows*sqrt(ef$vectors$r)) %>%
-  mutate(Dim1 = Dim1 * multiplier,
-         Dim2 = Dim2 * multiplier) %>%
-  mutate(variables = rownames(.)) %>%
-  filter(ef$vectors$pvals < 0.1) %>%
-  mutate(shortnames = c("C", "Temp", "Precip", "AI", "pH", "Long."))
-pcoaA1 <- paste("PC1: ", round((eigenvals(pcoa)/sum(eigenvals(pcoa)))[1]*100, 1), "%")
-pcoaA2 <- paste("PC2: ", round((eigenvals(pcoa)/sum(eigenvals(pcoa)))[2]*100, 1), "%")
-input$map_loaded$Axis01 <- vegan::scores(pcoa)[,1]
-input$map_loaded$Axis02 <- vegan::scores(pcoa)[,2]
-pdf("InitialFigs/BradyComp_Wun.pdf", width = 7, height = 5)
-ggplot(input$map_loaded, aes(Axis01, Axis02)) +
-  geom_point(size = 3, pch = 16, alpha = 0.5) +
-  geom_segment(data = vec.df,
-               aes(x = 0, xend = Dim1, y = 0, yend = Dim2),
-               arrow = arrow(length = unit(0.35, "cm")),
-               colour = "gray", alpha = 0.6,
-               inherit.aes = FALSE) + 
-  geom_text(data = vec.df,
-            aes(x = Dim1, y = Dim2, label = shortnames),
-            size = 4, color = "blue") +
-  labs(x = pcoaA1, 
-       y = pcoaA2,
-       colour = "Vegetation") +
-  scale_colour_viridis_d() +
-  ggtitle("Weighted UniFrac") +
-  theme_bw() +  
-  theme(legend.position = "right",
-        axis.title = element_text(face = "bold", size = 12), 
-        axis.text = element_text(size = 10))
-dev.off()
-
-
-
-pcoa <- cmdscale(un, k = nrow(input$map_loaded) - 1, eig = T)
-d_env <- input$map_loaded %>%
-  dplyr::select(conductivity, nitrate_nitrogen, organic_carbon, 
-                bio1, bio12, AI, ph, latitude, longitude)
-set.seed(100)
-ef <- envfit(pcoa, d_env, permutations = 999, na.rm = TRUE)
-ef
-ordiplot(pcoa)
-plot(ef, cex = 0.5)
-multiplier <- ordiArrowMul(ef)
-multiplier
-vec.df <- as.data.frame(ef$vectors$arrows*sqrt(ef$vectors$r)) %>%
-  mutate(Dim1 = Dim1 * multiplier,
-         Dim2 = Dim2 * multiplier) %>%
-  mutate(variables = rownames(.)) %>%
-  filter(ef$vectors$pvals < 0.06) %>%
-  mutate(shortnames = c("C", "Temp", "Precip", "AI", "pH", "Long."))
-pcoaA1 <- paste("PC1: ", round((eigenvals(pcoa)/sum(eigenvals(pcoa)))[1]*100, 1), "%")
-pcoaA2 <- paste("PC2: ", round((eigenvals(pcoa)/sum(eigenvals(pcoa)))[2]*100, 1), "%")
-input$map_loaded$Axis01 <- vegan::scores(pcoa)[,1]
-input$map_loaded$Axis02 <- vegan::scores(pcoa)[,2]
-pdf("InitialFigs/BradyComp_un.pdf", width = 7, height = 5)
-ggplot(input$map_loaded, aes(Axis01, Axis02)) +
-  geom_point(size = 3, pch = 16, alpha = 0.5) +
-  geom_segment(data = vec.df,
-               aes(x = 0, xend = Dim1, y = 0, yend = Dim2),
-               arrow = arrow(length = unit(0.35, "cm")),
-               colour = "gray", alpha = 0.6,
-               inherit.aes = FALSE) + 
-  geom_text(data = vec.df,
-            aes(x = Dim1, y = Dim2, label = shortnames),
-            size = 4, color = "blue") +
-  labs(x = pcoaA1, 
-       y = pcoaA2,
-       colour = "Vegetation") +
-  scale_colour_viridis_d() +
-  ggtitle("Unweighted UniFrac") +
-  theme_bw() +  
-  theme(legend.position = "right",
-        axis.title = element_text(face = "bold", size = 12), 
-        axis.text = element_text(size = 10))
-dev.off()
-
-
-
-#### _dbRDA ####
-# Full dataset, no pH
-d_env <- input$map_loaded %>%
-  dplyr::select(conductivity, nitrate_nitrogen, organic_carbon, 
-                bio1, bio12, AI, latitude, longitude)
-
-mod0 <- dbrda(bc ~ 1, d_env)  # Model with intercept only
-mod1 <- dbrda(bc ~ ., d_env)  # Model with all explanatory variables
-mod <- ordistep(mod0, scope = formula(mod1))
-mod$anova # temp, precip, AI, C, NO3
-
-mod0 <- dbrda(ja ~ 1, d_env)  # Model with intercept only
-mod1 <- dbrda(ja ~ ., d_env)  # Model with all explanatory variables
-mod <- ordistep(mod0, scope = formula(mod1))
-mod$anova # temp, precip, AI, C, NO3
-
-mod0 <- dbrda(Wun ~ 1, d_env)  # Model with intercept only
-mod1 <- dbrda(Wun ~ ., d_env)  # Model with all explanatory variables
-mod <- ordistep(mod0, scope = formula(mod1))
-mod$anova # temp, precip, AI, C
-
-mod0 <- dbrda(un ~ 1, d_env)  # Model with intercept only
-mod1 <- dbrda(un ~ ., d_env)  # Model with all explanatory variables
-mod <- ordistep(mod0, scope = formula(mod1))
-mod$anova # temp, precip, AI, C
-
-# Subset dataset, pH included
-d_env <- input$map_loaded %>%
-  dplyr::select(conductivity, nitrate_nitrogen, organic_carbon, 
-                bio1, bio12, AI, latitude, longitude, ph)
-sum(is.na(d_env))
-env_nona <- d_env %>%
-  drop_na()
-input_sub <- filter_data(input,
-                         filter_cat = "sampleID",
-                         keep_vals = rownames(env_nona))
-bc_sub <- calc_dm(input_sub$data_loaded)
-ja_sub <- calc_dm(input_sub$data_loaded, "jaccard")
-otu <- phyloseq::otu_table(input_sub$data_loaded, taxa_are_rows = T)
-tax <- phyloseq::tax_table(as.matrix(input_sub$taxonomy_loaded))
-map <- phyloseq::sample_data(input_sub$map_loaded)
-tree <- read_tree("data/brady134_fasttree_nogap.tree")
-is.rooted(tree) # FALSE. Tree is not rooted
-tree <- midpoint.root(tree)
-is.rooted(tree) # TRUE. Tree is now rooted at midpoint
-tree$tip.label
-tree$tip.label <- gsub(".fna", "", tree$tip.label)
-tree$tip.label <- gsub("Brady_", "", tree$tip.label)
-tl <- as.data.frame(tree$tip.label) %>%
-  set_names("tip.label") %>%
-  filter(tip.label %notin% rownames(input_sub$data_loaded))
-tree_pruned <- drop.tip(tree,
-                        tip = tl$tip.label)
-input.phy <- phyloseq::phyloseq(otu, tax, map, tree_pruned)
-Wun_sub <- distance(input.phy, 
-                    method = "wunifrac", 
-                    type = "samples")
-un_sub <- distance(input.phy, 
-                   method = "unifrac", 
-                   type = "samples")
-
-mod0 <- dbrda(bc_sub ~ 1, env_nona)  # Model with intercept only
-mod1 <- dbrda(bc_sub ~ ., env_nona)  # Model with all explanatory variables
-mod <- ordistep(mod0, scope = formula(mod1))
-mod$anova # temp, precip, AI, NO3, pH, cond.
-
-mod0 <- dbrda(ja_sub ~ 1, env_nona)  # Model with intercept only
-mod1 <- dbrda(ja_sub ~ ., env_nona)  # Model with all explanatory variables
-mod <- ordistep(mod0, scope = formula(mod1))
-mod$anova # temp, precip, AI, pH, NO3
-
-mod0 <- dbrda(Wun_sub ~ 1, env_nona)  # Model with intercept only
-mod1 <- dbrda(Wun_sub ~ ., env_nona)  # Model with all explanatory variables
-mod <- ordistep(mod0, scope = formula(mod1))
-mod$anova # pH, temp, AI
-
-mod0 <- dbrda(un_sub ~ 1, env_nona)  # Model with intercept only
-mod1 <- dbrda(un_sub ~ ., env_nona)  # Model with all explanatory variables
-mod <- ordistep(mod0, scope = formula(mod1))
-mod$anova # pH, temp, AI
-
-
-
-#### _Varpart ####
-# varpart can take 2, 3, or 4 explanatory matrices
-# Partition variation into geography, climate, soil
-mod <- varpart(bc, 
-               ~ latitude + longitude, 
-               ~ AI + bio1 + bio12,
-               ~ conductivity + nitrate_nitrogen + organic_carbon,
-               data = d_env)
-mod
-summary(mod)
-plot(mod, bg = 2:4, Xnames = c('Geog.', 'Clim.', 'Soil'))
-
-mod <- varpart(ja, 
-               ~ latitude + longitude, 
-               ~ AI + bio1 + bio12,
-               ~ conductivity + nitrate_nitrogen + organic_carbon,
-               data = d_env)
-mod
-summary(mod)
-plot(mod, bg = 2:4, Xnames = c('Geog.', 'Clim.', 'Soil'))
-
-
-mod <- varpart(Wun, 
-               ~ latitude + longitude, 
-               ~ AI + bio1 + bio12,
-               ~ conductivity + nitrate_nitrogen + organic_carbon,
-               data = d_env)
-mod
-summary(mod)
-pdf("InitialFigs/BradyComp_varpart.pdf", width = 7, height = 5)
-plot(mod, bg = 2:4, Xnames = c('Geog.', 'Clim.', 'Soil'))
-dev.off()
-
-mod <- varpart(un, 
-               ~ latitude + longitude, 
-               ~ AI + bio1 + bio12,
-               ~ conductivity + nitrate_nitrogen + organic_carbon,
-               data = d_env)
-mod
-summary(mod)
-plot(mod, bg = 2:4, Xnames = c('Geog.', 'Clim.', 'Soil'))
-
-
-
-#### _Mantel ####
-# Need to remake geog.dist and env.dist, recycle code from above with input$map_loaded
-# Run Partial Mantels to control for one and test the other
-# Geographic distance
-dist.geog <- geosphere::distm(cbind(input$map_loaded$longitude, input$map_loaded$latitude),
-                              fun = distHaversine)
-rownames(dist.geog) <- input$map_loaded$sampleID
-colnames(dist.geog) <- input$map_loaded$sampleID
-dist.geog[upper.tri(dist.geog, diag = TRUE)] <- NA
-hist(dist.geog)
-
-# Environmental distance
-d_sylph_env <- input_sub$map_loaded %>%
-  dplyr::select(sampleID, all_of(env_vars))
-n_na <- c()
-for (i in 1:ncol(d_sylph_env)) {
-  n_na[i] <- sum(is.na(d_sylph_env[,i]))
-}
-n_na
-d_sylph_env <- d_sylph_env %>%
-  dplyr::select(where(~ all(!is.na(.)))) %>%
-  dplyr::select(-sampleID, -latitude, -longitude)
-# Conductivity, nitrate, carbon, temp, precip, AI
-dist.env <- as.matrix(dist(d_sylph_env, method = "euclidean", diag = FALSE, upper = FALSE))
-rownames(dist.env) <- d_sylph$sampleID
-colnames(dist.env) <- d_sylph$sampleID
-dist.env[upper.tri(dist.env, diag = TRUE)] <- NA
-hist(dist.env)
-
-set.seed(100)
-mantel(bc, dist.env, permutations = 2000)
-set.seed(100)
-mantel.partial(bc, dist.env, dist.geog, permutations = 2000)
-set.seed(100)
-mantel(bc, dist.geog, permutations = 2000)
-set.seed(100)
-mantel.partial(bc, dist.geog, dist.env, permutations = 2000)
-
-set.seed(100)
-mantel(ja, dist.env, permutations = 2000)
-set.seed(100)
-mantel.partial(ja, dist.env, dist.geog, permutations = 2000)
-set.seed(100)
-mantel(ja, dist.geog, permutations = 2000)
-set.seed(100)
-mantel.partial(ja, dist.geog, dist.env, permutations = 2000)
-
-set.seed(100)
-mantel(Wun, dist.env, permutations = 2000)
-set.seed(100)
-mantel.partial(Wun, dist.env, dist.geog, permutations = 2000)
-set.seed(100)
-mantel(Wun, dist.geog, permutations = 2000)
-set.seed(100)
-mantel.partial(Wun, dist.geog, dist.env, permutations = 2000)
-
-set.seed(100)
-mantel(un, dist.env, permutations = 2000)
-set.seed(100)
-mantel.partial(un, dist.env, dist.geog, permutations = 2000)
-set.seed(100)
-mantel(un, dist.geog, permutations = 2000)
-set.seed(100)
-mantel.partial(un, dist.geog, dist.env, permutations = 2000)
-
-pdf("InitialFigs/BradyComp_BC_geog.pdf", width = 7, height = 5)
-qplot(as.dist(dist.geog), bc, geom = c("point","smooth"), alpha = I(0.1)) +
-  labs(x = "Geographic Distance (m)",
-       y = "Bray-Curtis Dissimilarity") +
-  ylim(0, 1) +
-  theme_bw() +
-  theme(axis.title = element_text(face = "bold", size = 12), 
-        axis.text = element_text(size = 10),
-        plot.margin = unit(c(0.1,0.1,0.1,0.15),"cm"))
-dev.off()
-
-qplot(as.dist(dist.geog), Wun, geom = c("point","smooth"), alpha = I(0.1)) +
-  labs(x = "Geographic Distance (m)",
-       y = "Weighted UniFrac") +
-  ylim(0, 1) +
-  theme_bw() +
-  theme(axis.title = element_text(face = "bold", size = 12), 
-        axis.text = element_text(size = 10),
-        plot.margin = unit(c(0.1,0.1,0.1,0.15),"cm"))
-
-
-
-#### _GDM ####
-# Again, test geog.dist and env.dist
-
-# Remake as full, not just lower triangle
-dist.env <- as.matrix(dist(d_sylph_env, method = "euclidean", diag = FALSE, upper = FALSE))
-rownames(dist.env) <- d_sylph$sampleID
-colnames(dist.env) <- d_sylph$sampleID
-
-# GDM - BC
-sum(rownames(as.matrix(bc)) != input$map_loaded$sampleID)
-gdm.sampID <- rownames(as.matrix(bc))
-bacteria.distance.v.mat.gdm <- cbind(gdm.sampID, as.matrix(bc))
-geography.distance.v.mat.gdm <- cbind(gdm.sampID, dist.geog)
-env.distance.v.mat.gdm <- cbind(gdm.sampID, dist.env)
-dim(bacteria.distance.v.mat.gdm)
-dim(geography.distance.v.mat.gdm)
-dim(env.distance.v.mat.gdm)
-input$map_loaded$gdm.sampID <- input$map_loaded$sampleID
-gdm.data <- dplyr::select(input$map_loaded, gdm.sampID, latitude, longitude)
-gdm.bray <- formatsitepair(bioData = bacteria.distance.v.mat.gdm,
-                           bioFormat = 3,
-                           siteColumn = "gdm.sampID",
-                           XColumn = "longitude",
-                           YColumn = "latitude",
-                           predData = gdm.data,
-                           distPreds = list(env.distance.v.mat.gdm))
-gdm.1 <- gdm(gdm.bray, geo = TRUE) # Worked
-summary(gdm.1)
-# Variable Importance
-gdm.varImp(gdm.bray, geo = TRUE)
-# Geographic         22.126
-# matrix_1           25.634
-
-# GDM - Jaccard
-sum(rownames(as.matrix(ja)) != input$map_loaded$sampleID)
-gdm.sampID <- rownames(as.matrix(ja))
-bacteria.distance.v.mat.gdm <- cbind(gdm.sampID, as.matrix(ja))
-geography.distance.v.mat.gdm <- cbind(gdm.sampID, dist.geog)
-env.distance.v.mat.gdm <- cbind(gdm.sampID, dist.env)
-dim(bacteria.distance.v.mat.gdm)
-dim(geography.distance.v.mat.gdm)
-dim(env.distance.v.mat.gdm)
-input$map_loaded$gdm.sampID <- input$map_loaded$sampleID
-gdm.data <- dplyr::select(input$map_loaded, gdm.sampID, latitude, longitude)
-gdm.jac <- formatsitepair(bioData = bacteria.distance.v.mat.gdm,
-                          bioFormat = 3,
-                          siteColumn = "gdm.sampID",
-                          XColumn = "longitude",
-                          YColumn = "latitude",
-                          predData = gdm.data,
-                          distPreds = list(env.distance.v.mat.gdm))
-gdm.1 <- gdm(gdm.jac, geo = TRUE) # Worked
-summary(gdm.1)
-# Variable Importance
-gdm.varImp(gdm.jac, geo = TRUE)
-# Geographic         18.690
-# matrix_1           32.055
-
-# GDM - Weighted UniFrac
-sum(rownames(as.matrix(Wun)) != input$map_loaded$sampleID)
-gdm.sampID <- rownames(as.matrix(Wun))
-bacteria.distance.v.mat.gdm <- cbind(gdm.sampID, as.matrix(Wun))
-geography.distance.v.mat.gdm <- cbind(gdm.sampID, dist.geog)
-env.distance.v.mat.gdm <- cbind(gdm.sampID, dist.env)
-dim(bacteria.distance.v.mat.gdm)
-dim(geography.distance.v.mat.gdm)
-dim(env.distance.v.mat.gdm)
-input$map_loaded$gdm.sampID <- input$map_loaded$sampleID
-gdm.data <- dplyr::select(input$map_loaded, gdm.sampID, latitude, longitude)
-gdm.Wun <- formatsitepair(bioData = bacteria.distance.v.mat.gdm,
-                          bioFormat = 3,
-                          siteColumn = "gdm.sampID",
-                          XColumn = "longitude",
-                          YColumn = "latitude",
-                          predData = gdm.data,
-                          distPreds = list(env.distance.v.mat.gdm))
-gdm.1 <- gdm(gdm.Wun, geo = TRUE) # Worked!
-summary(gdm.1)
-# Variable Importance
-gdm.varImp(gdm.Wun, geo = TRUE)
-# Geographic         19.825
-# matrix_1           21.734
-
-# GDM - UniFrac
-sum(rownames(as.matrix(un)) != input$map_loaded$sampleID)
-gdm.sampID <- rownames(as.matrix(un))
-bacteria.distance.v.mat.gdm <- cbind(gdm.sampID, as.matrix(un))
-geography.distance.v.mat.gdm <- cbind(gdm.sampID, dist.geog)
-env.distance.v.mat.gdm <- cbind(gdm.sampID, dist.env)
-dim(bacteria.distance.v.mat.gdm)
-dim(geography.distance.v.mat.gdm)
-dim(env.distance.v.mat.gdm)
-input$map_loaded$gdm.sampID <- input$map_loaded$sampleID
-gdm.data <- dplyr::select(input$map_loaded, gdm.sampID, latitude, longitude)
-gdm.un <- formatsitepair(bioData = bacteria.distance.v.mat.gdm,
-                         bioFormat = 3,
-                         siteColumn = "gdm.sampID",
-                         XColumn = "longitude",
-                         YColumn = "latitude",
-                         predData = gdm.data,
-                         distPreds = list(env.distance.v.mat.gdm))
-gdm.1 <- gdm(gdm.un, geo = TRUE) # Worked!
-summary(gdm.1)
-# Variable Importance
-gdm.varImp(gdm.un, geo = TRUE)
-# Geographic         15.846
-# matrix_1           38.547
-
-
-
-#### 10. Sylph 993 n 331 ####
-# Reran Sylph but removed Strain 4 and GTDB with > 13 missing bac120
+#### 6. Strain Distributions ####
+# Reran Sylph but removed Strain 3 and 4 and GTDB with > 4 missing bac120
+# So, now 915 input genomes
 # Run on all 331 BASE metagenomes that met criteria!
 # Make tree with those detected by Sylph
-# Rerun code from section 8/9 with the new input data, new UniFrac
+# Rerun ecological analyses with new input data, new UniFrac
+# Import the needed data so you can restart the analysis just from here
 d_331 <- read.csv("data/metadata_331.csv") %>%
   mutate("Climate Class" = ifelse(AI < 0.5, "Arid to semi-arid",
                                   ifelse(AI >= 0.5 & AI < 0.65, "Dry sub-humid",
                                          "Humid")))
-table(d_331$`Climate Class`)
-coords_trans <- st_as_sf(d_331, 
-                         coords = c('longitude', 'latitude'), 
-                         crs=4326)
-sf_oz <- ozmap("states")
-map <- ggplot(data = sf_oz) + 
-  geom_sf(fill = "grey90", color = "white") +
-  geom_sf(data = coords_trans,
-          aes(fill = AI, shape = `Climate Class`), 
-          size = 3, alpha = 1, color = "black", stroke = 0.3) +
-  scale_shape_manual(values = c(21, 24, 22)) +
-  annotation_scale() +
-  annotation_north_arrow(pad_x = unit(1, "cm"), pad_y = unit(1, "cm"),
-                         height = unit(1, "cm"), width = unit(1, "cm"),) +
-  scale_fill_distiller(palette = "RdYlBu", direction = 1) +
-  guides(shape = guide_legend(order = 2),
-         fill = guide_colorbar(order = 1)) +
-  xlim(111, 155) +
-  ylim(43, 12) +
-  labs(fill = "Aridity\nindex") +
-  theme_minimal()
-pdf("FinalFigs/Figure1.pdf", width = 7, height = 5)
-map
-dev.off()
-png("FinalFigs/Figure1.png", width = 7, height = 5, units = "in", res = 300)
-map
-dev.off()
-
+range(d_331$bio1)
+range(d_331$bio12)
 bacGT <- read.delim("~/Desktop/Fierer/Strains/bac120_metadata_r220.tsv") # takes a while to load
-bac120 <- read.delim("data/brady_1081_markers_summary.tsv") %>%
-  mutate(name2 = gsub(".fna", "", name)) %>%
-  mutate(name2 = gsub("Brady_", "", name2)) %>%
-  mutate(name2 = gsub("Strain_", "Strain", name2)) %>%
-  separate(name2, remove = F, into = c("sampleID", "strainID")) %>%
-  mutate(strainID = ifelse(grepl("Strain", strainID) == TRUE,
-                           strainID, "GTDB")) %>%
-  mutate(strainID = factor(strainID,
-                           levels = c("Strain1", "Strain2", "Strain3", "Strain4",
-                                      "GTDB")))
-bac120_sub <- bac120 %>%
-  filter(number_missing_genes <= 13) %>%
-  mutate(name3 = gsub("Reference", "GCA_016616885.1", name2))
+input <- readRDS("data/input_sylph.rds")
+row_dat <- readRDS("data/row_data.rds")
+ubiq <- data.frame(GenomeID = rownames(input$data_loaded),
+                   Ubiquity = rowSums(input$data_loaded > 0)) %>%
+  left_join(., row_dat, by = "GenomeID") %>%
+  mutate(Perc = Ubiquity/331*100) %>%
+  mutate(Nfix = ifelse(Function == "N fix. Free" | Function == "N fix. Sym.",
+                       "Yes", "No"))
+tree_data_maxmin <- readRDS("data/tree_data_maxmin.rds")
+checkM <- read.delim("data/CheckM_summary_table_Brady53.tsv")
+range(checkM$Completeness)
+range(checkM$Contamination)
+checkM2to4 <- read.delim("data/CheckM_summary_table_Brady2to4.tsv")
+range(checkM2to4$Completeness)
+range(checkM2to4$Contamination)
+checkM_all <- rbind(checkM, checkM2to4) %>%
+  mutate(Bin.Name = gsub("-Reads_1-", "", Bin.Name)) %>%
+  mutate(Bin.Name = gsub(".Genome", "", Bin.Name)) %>%
+  mutate(Bin.Name = gsub("Strain", "_Strain", Bin.Name)) %>%
+  mutate(Strain = substr(Bin.Name, 
+                         start = nchar(Bin.Name) - 7, 
+                         stop = nchar(Bin.Name))) %>%
+  separate(Bin.Name, remove = F, sep = "_", into = c("Brady", "sampleID",
+                                                     "Junk1", "Junk2")) %>%
+  dplyr::select(-Brady, -Junk1, -Junk2) %>%
+  mutate(sampleID = as.character(sampleID)) %>%
+  pivot_longer(cols = c("Completeness", "Contamination"))
 
 ref_ani <- read.delim("data/Brady_fastani.txt",
                       header = F) %>%
@@ -5810,1090 +2104,10 @@ ref_ani <- read.delim("data/Brady_fastani.txt",
   mutate(sampleID = as.integer(sampleID)) %>%
   dplyr::select(sampleID, ANI)
 range(ref_ani$ANI)
-
-d_brady <- d %>%
+d_brady <- d_331 %>%
   filter(sampleID %in% ref_ani$sampleID) %>%
   mutate(sampleID = as.character(sampleID)) %>%
   arrange(sampleID)
-
-# Check aridity
-# <0.03 Hyper Arid 
-# 0.03–0.2 Arid 
-# 0.2–0.5 Semi-Arid 
-# 0.5–0.65 Dry sub-humid 
-# >0.65 Humid
-sum(d_331$AI < 0.03) # 0
-sum(d_331$AI >= 0.03 & d_331$AI < 0.2) # 48
-sum(d_331$AI >= 0.2 & d_331$AI < 0.5) # 55
-sum(d_331$AI >= 0.5 & d_331$AI < 0.65) # 110
-sum(d_331$AI > 0.65) # 118
-
-# So total:
-# 103 arid to semi-arid
-# 110 dry sub-humid
-# 118 humid
-
-
-
-#### _Setup ####
-strains_sylph_raw <- read.delim("data/sylph_profile_brady993_n331.tsv") %>%
-  mutate(GenomeID = gsub("/scratch/alpine/clbd1748/Australia_copy/Brady993/",
-                         "", Genome_file))
-strains_sylph <- read.delim("data/sylph_profile_brady993_n331.tsv") %>%
-  mutate(SampleID = gsub("/scratch/alpine/clbd1748/Australia_copy/QC_reads/", 
-                         "", Sample_file)) %>%
-  mutate(SampleID = gsub("/scratch/alpine/clbd1748/Australia_copy/", 
-                         "", SampleID)) %>%
-  separate(SampleID, into = c("SampleID", "Junk1", "Junk2"), sep = "_") %>%
-  dplyr::select(-Junk1, -Junk2) %>%
-  mutate(GenomeID = gsub("/scratch/alpine/clbd1748/Australia_copy/Brady993/Brady_",
-                         "", Genome_file)) %>%
-  mutate(GenomeID = gsub(".fna.gz",
-                         "", GenomeID)) %>%
-  mutate(GenomeID = gsub("/scratch/alpine/clbd1748/Australia_copy/Brady993/",
-                         "", GenomeID))
-length(unique(strains_sylph$SampleID)) # 271/331 samples
-length(unique(strains_sylph$GenomeID)) # 182/993 genomes - need to get these and build tree!
-sort(unique(strains_sylph$GenomeID)) # 89 strains
-brady182 <- as.data.frame(unique(strains_sylph_raw$GenomeID))
-# write.table(brady182,
-#             "data/brady182.txt", sep = "\t", row.names = F, col.names = F)
-hist(strains_sylph$Eff_cov)
-plot(strains_sylph$Sequence_abundance, strains_sylph$Taxonomic_abundance)
-
-# Get info on these genomes (the 93 GTDB genomes) and Brady genomes in general
-gtdb_brady <- bacGT %>%
-  filter(grepl("Bradyrhizobium", gtdb_taxonomy))
-table(gtdb_brady$ncbi_genome_category) # 85 mags, 784 isolates
-table(gtdb_brady$ncbi_isolation_source)
-table(gtdb_brady$gtdb_representative) # 278 reps
-hist(gtdb_brady$gc_percentage)
-hist(gtdb_brady$genome_size)
-gtdb_93_names <- strains_sylph %>%
-  filter(grepl("GCA_|Reference", Genome_file)) %>%
-  filter(!duplicated(Genome_file)) %>%
-  mutate(GenomeID = gsub("Reference", "GCA_016616885.1", GenomeID))
-gtdb_93 <- bacGT %>%
-  subset(grepl(paste(gtdb_93_names$GenomeID, collapse="|"), ncbi_genbank_assembly_accession))
-table(gtdb_93$ncbi_isolation_source) # 20 soil, 43 nodule, 30 other
-table(gtdb_93$ncbi_genome_category) # 9 MAG, 84 not
-gtdb_93$ncbi_taxonomy
-gtdb_93$gtdb_taxonomy
-tax <- bacGT %>%
-  filter(ncbi_genbank_assembly_accession %in% bac120_sub$name3) %>%
-  dplyr::select(ncbi_genbank_assembly_accession, gtdb_taxonomy) %>%
-  mutate(gtdb_taxonomy = gsub("d__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("p__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("c__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("o__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("f__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("g__", "", gtdb_taxonomy)) %>%
-  mutate(gtdb_taxonomy = gsub("s__", "", gtdb_taxonomy)) %>%
-  separate(gtdb_taxonomy, sep = ";", into = c("Domain", "Phylum", "Class", "Order",
-                                              "Family", "Genus", "Species")) %>%
-  dplyr::select(ncbi_genbank_assembly_accession, Species)
-
-# CheckM for all 993 input. Already checked strains. Check GTDB
-bacGT_993 <- bacGT %>%
-  filter(ncbi_genbank_assembly_accession %in% strains_sylph$GenomeID)
-min(bacGT_993$checkm2_completeness) # 80.94
-max(bacGT_993$checkm2_contamination) # 5.15
-
-# Plot - use sequence abundance, filter d to samples with >= 1 genome detected
-d_sylph <- d_331 %>%
-  filter(sampleID %in% strains_sylph$SampleID)
-
-# Check numbers
-sum(d_sylph$AI < 0.03) # 0
-sum(d_sylph$AI >= 0.03 & d_sylph$AI < 0.2) # 40
-sum(d_sylph$AI >= 0.2 & d_sylph$AI < 0.5) # 45
-sum(d_sylph$AI >= 0.5 & d_sylph$AI < 0.65) # 95
-sum(d_sylph$AI > 0.65) # 91
-# For d_sylph, 85, 95, 91.
-
-d_sylph_ai_sort <- d_sylph %>%
-  arrange(AI)
-sylph_strains_331 <- strains_sylph %>%
-  dplyr::select(SampleID, GenomeID, Sequence_abundance) %>%
-  pivot_wider(names_from = SampleID, values_from = Sequence_abundance) %>%
-  mutate(Type = ifelse(grepl(paste(d_sylph$sampleID, collapse = "|"), GenomeID),
-                       1,
-                       ifelse(GenomeID == "Reference",
-                              2, 3))) %>%
-  separate(GenomeID, remove = F, into = c("Col1", "Col2", "Col3")) %>%
-  mutate(Col1 = gsub("Reference", "aReference", Col1)) %>%
-  arrange(Type, match(Col1, d_sylph_ai_sort$sampleID)) %>%
-  column_to_rownames(var = "GenomeID") %>%
-  dplyr::select(all_of(as.character(d_sylph_ai_sort$sampleID)))
-table(d_sylph_ai_sort$vegetation_type)
-ann_cols <- data.frame(row.names = colnames(sylph_strains_331), 
-                       Aridity = d_sylph_ai_sort$AI,
-                       Vegetation = d_sylph_ai_sort$vegetation_type) %>%
-  mutate(StrainFinder = ifelse(rownames(.) %in% d_brady$sampleID,
-                               "Yes",
-                               "No"))
-ann_rows <- data.frame(row.names = rownames(sylph_strains_331)) %>%
-  mutate(Genome = ifelse(grepl(paste(paste0(d_sylph$sampleID, "_"), collapse = "|"), 
-                               rownames(.)),
-                         "Strain",
-                         ifelse(grepl("Reference", rownames(.)),
-                                "Reference", "Other GTDB")))
-table(ann_rows$Genome) # 89 Strain, 93 GTDB
-ann_colors <- list(Genome = c("Strain" = "#00BFC4",
-                              "Reference" = "#F8766D",
-                              "Other GTDB" = "#C77CFF"),
-                   Vegetation = c("Forest" = "darkgreen",
-                                  "Shrubland" = "chartreuse3",
-                                  "Woodland" = "brown",
-                                  "Grassland" = "gold",
-                                  "Savannah" = "darkgoldenrod",
-                                  "Heathland" = "purple",
-                                  "Dune" = "antiquewhite"),
-                   StrainFinder = c(No = "#F8766D",
-                                    Yes = "#619CFF"))
-pheatmap(sylph_strains_331,
-         color = colorRampPalette(brewer.pal(n = 7, name = "Reds"))(100),
-         legend = T,
-         main = "Bradyrhizobium % Abundance (n genomes=182/993, n samples=271/331)",
-         cluster_rows = F,
-         cluster_cols = F,
-         angle_col = 90,
-         display_numbers = F,
-         number_color = "black",
-         annotation_col = ann_cols,
-         annotation_row = ann_rows,
-         annotation_colors = ann_colors,
-         fontsize_row = 4,
-         fontsize_col = 4,
-         na_col = "white",
-         border_color = "white",
-         labels_row = gsub("_", " ", rownames(sylph_strains_331)),
-         filename = "InitialFigs/Brady_993_abund331.png",
-         width = 12,
-         height = 10)
-dev.off()
-dev.set(dev.next())
-dev.set(dev.next())
-
-sylph_strains_331_nona <- sylph_strains_331 %>%
-  replace(is.na(.), 0)
-pheatmap(sylph_strains_331_nona,
-         color = colorRampPalette(brewer.pal(n = 7, name = "Reds"))(100),
-         legend = T,
-         main = "            Bradyrhizobium Genomes % Abundance, n = 271/331",
-         cluster_rows = T,
-         cluster_cols = F,
-         angle_col = 90,
-         display_numbers = F,
-         number_color = "black",
-         annotation_col = ann_cols,
-         annotation_row = ann_rows,
-         annotation_colors = ann_colors,
-         fontsize_number = 10,
-         fontsize_row = 6,
-         fontsize_col = 6,
-         na_col = "white",
-         border_color = "white",
-         labels_row = gsub("_", " ", rownames(sylph_strains_331)),
-         filename = "InitialFigs/Brady_993_abund331_clust.png",
-         width = 8,
-         height = 10)
-dev.off()
-dev.set(dev.next())
-dev.set(dev.next())
-
-# Tree (for big context tree, see section 8)
-sylph_detected <- brady182 %>%
-  set_names("GenomeID") %>%
-  mutate(GenomeID = gsub(".fna.gz", "", GenomeID)) %>%
-  mutate(GenomeID = gsub("Brady_", "", GenomeID))
-brady182_tree <- read.tree("data/brady182_fasttree_nogap.tree")
-ggtree(brady182_tree)
-brady182_tree$tip.label
-brady182_tree$tip.label <- gsub(".fna", "", brady182_tree$tip.label)
-brady182_tree$tip.label <- gsub("Brady_", "", brady182_tree$tip.label)
-sum(sylph_detected$GenomeID %in% brady182_tree$tip.label) # 182
-tc <- data.frame(GenomeID = brady182_tree$tip.label) %>%
-  left_join(., tax, by = c("GenomeID" = "ncbi_genbank_assembly_accession")) %>%
-  mutate(Species = coalesce(Species, GenomeID)) %>%
-  mutate(Species = gsub("Reference", "Bradyrhizobium diazoefficiens_F (Reference)", Species))
-pdf("InitialFigs/Brady182_Fasttree_Bac120_2215AA.pdf", width = 8.5, height = 11)
-ggtree(brady182_tree, linewidth = 0.1)  %<+% tc +
-  geom_tiplab(size = 1, vjust = 0.5, aes(label = Species)) +
-  geom_treescale() +
-  geom_nodelab(aes(label = label), size = 0.75) +
-  guides(color = guide_legend(override.aes = list(size = 5))) +
-  theme(legend.position = c(0.7, 0.3))
-dev.off()
-
-# Tree with Aridity info
-# Need genomeID rownames, then column for min AI and max AI
-d_sylph_ai <- d_sylph %>%
-  mutate(SampleID = as.character(sampleID)) %>%
-  dplyr::select(SampleID, AI)
-
-tree_data <- strains_sylph %>%
-  dplyr::select(SampleID, GenomeID) %>%
-  left_join(., d_sylph_ai, by = "SampleID") %>%
-  group_by(GenomeID) %>%
-  summarise(minAI = min(AI),
-            maxAI = max(AI)) %>%
-  as.data.frame() %>%
-  left_join(., tc, by = "GenomeID")
-rownames(tree_data) <- tree_data$GenomeID
-sum(tree_data$GenomeID %in% brady182_tree$tip.label)
-p <- ggtree(brady182_tree)
-get_taxa_name(p)
-tree_data <- tree_data[order(match(tree_data$GenomeID, rev(get_taxa_name(p)))), ]
-tree_data$GenomeID <- factor(tree_data$GenomeID,
-                             levels = rev(get_taxa_name(p)))
-
-p <- ggtree(brady182_tree, linewidth = 0.2) +
-  theme(plot.margin = margin(0,-20,0,-15))
-p
-
-s <- ggplot(tree_data) +
-  geom_point(aes(x = minAI, y = GenomeID), size = 1, colour = "red") +
-  geom_point(aes(x = maxAI, y = GenomeID), size = 1, colour = "blue") +
-  geom_segment(aes(x = minAI, xend = maxAI,
-                   y = GenomeID, yend = GenomeID)) +
-  labs(x = "Aridity index",
-       y = NULL) +
-  #scale_y_discrete(expand = c(0.01, 0.01)) +
-  scale_y_discrete(labels = tree_data$Species) +
-  theme_bw() +
-  theme(axis.text.y = element_text(size = 3),
-        axis.ticks.y = element_blank(),
-        panel.grid.major.y = element_blank(),
-        panel.grid.minor.y = element_blank())
-s
-
-pdf("InitialFigs/BradyTree_Aridity.pdf", width = 8, height = 8)
-plot_grid(p, s, align = "h", rel_widths = c(0.5, 0.5))
-dev.off()
-
-
-
-#### _Comp ####
-# Composition and drivers, Bray-Curtis, Jaccard, Weighted UniFrac, Unweighted UniFrac
-sp_comp <- sylph_strains_331 %>%
-  replace(is.na(.), 0)
-input <- list()
-input$map_loaded <- d_sylph_ai_sort
-rownames(input$map_loaded) <- d_sylph_ai_sort$sampleID
-sum(d_sylph_ai_sort$sampleID != names(sp_comp))
-input$data_loaded <- sp_comp
-input$taxonomy_loaded <- sp_comp %>%
-  mutate(taxonomy1 = "Bacteria",
-         taxonomy2 = "Proteobacteria",
-         taxonomy3 = "Alphaproteobacteria",
-         taxonomy4 = "Hyphomicrobiales",
-         taxonomy5 = "Nitrobacteraceae",
-         taxonomy6 = "Bradyrhizobium",
-         taxonomy7 = rownames(.)) %>%
-  dplyr::select(taxonomy1, taxonomy2, taxonomy3, taxonomy4,
-                taxonomy5, taxonomy6, taxonomy7)
-sum(rownames(input$data_loaded) != rownames(input$taxonomy_loaded))
-
-# Alpha
-input$map_loaded$rich <- specnumber(input$data_loaded, 
-                                    MARGIN = 2)
-input$map_loaded$shannon <- vegan::diversity(input$data_loaded, 
-                                             index = "shannon", 
-                                             MARGIN = 2)
-range(input$map_loaded$rich)
-range(input$map_loaded$shannon)
-pdf("InitialFigs/BradyComp_RichAI.pdf", width = 7, height = 5)
-ggplot(input$map_loaded, aes(AI, rich)) +
-  geom_point(size = 3, pch = 16, alpha = 0.5) +
-  geom_smooth(se = F) +
-  labs(x = "drier <= Aridity index => wetter",
-       y = "Number of genomes detected") +
-  scale_y_continuous(breaks = c(1,2,3,4,5,6,7,8)) +
-  theme_bw() +  
-  theme(axis.title = element_text(face = "bold", size = 12), 
-        axis.text = element_text(size = 10))
-dev.off()
-
-# Dissimilarity matrices
-bc <- calc_dm(input$data_loaded)
-ja <- calc_dm(input$data_loaded, "jaccard")
-
-# Import phylogenetic tree. Use Phyloseq to calculate weighted UniFrac distance
-otu <- phyloseq::otu_table(input$data_loaded, taxa_are_rows = T)
-tax <- phyloseq::tax_table(as.matrix(input$taxonomy_loaded))
-map <- phyloseq::sample_data(input$map_loaded)
-tree <- read_tree("data/brady182_fasttree_nogap.tree")
-is.rooted(tree) # FALSE. Tree is not rooted
-tree <- midpoint.root(tree)
-is.rooted(tree) # TRUE. Tree is now rooted at midpoint
-tree$tip.label
-tree$tip.label <- gsub(".fna", "", tree$tip.label)
-tree$tip.label <- gsub("Brady_", "", tree$tip.label)
-input.phy <- phyloseq::phyloseq(otu, tax, map, tree)
-Wun <- distance(input.phy, 
-                method = "wunifrac", 
-                type = "samples")
-un <- distance(input.phy, 
-               method = "unifrac", 
-               type = "samples")
-
-
-
-# PCoAs (for each distance matrix)
-pcoa <- cmdscale(bc, k = nrow(input$map_loaded) - 1, eig = T)
-d_env <- input$map_loaded %>%
-  dplyr::select(conductivity, nitrate_nitrogen, organic_carbon, 
-                bio1, bio12, AI, ph, latitude, longitude)
-set.seed(100)
-ef <- envfit(pcoa, d_env, permutations = 999, na.rm = TRUE)
-ef
-ordiplot(pcoa)
-plot(ef, cex = 0.5, p.max = 0.05)
-multiplier <- ordiArrowMul(ef)
-multiplier
-vec.df <- as.data.frame(ef$vectors$arrows*sqrt(ef$vectors$r)) %>%
-  mutate(Dim1 = Dim1 * multiplier,
-         Dim2 = Dim2 * multiplier) %>%
-  mutate(variables = rownames(.)) %>%
-  filter(ef$vectors$pvals < 0.05) %>%
-  mutate(shortnames = c("NO3", "C", "Temp", "Precip", "AI", "pH", "Lat", "Long"))
-pcoaA1 <- paste("PC1: ", round((eigenvals(pcoa)/sum(eigenvals(pcoa)))[1]*100, 1), "%")
-pcoaA2 <- paste("PC2: ", round((eigenvals(pcoa)/sum(eigenvals(pcoa)))[2]*100, 1), "%")
-input$map_loaded$Axis01 <- vegan::scores(pcoa)[,1]
-input$map_loaded$Axis02 <- vegan::scores(pcoa)[,2]
-pdf("InitialFigs/BradyComp_BC.pdf", width = 7, height = 5)
-ggplot(input$map_loaded, aes(Axis01, Axis02)) +
-  geom_point(size = 3, pch = 16, alpha = 0.4) +
-  geom_segment(data = vec.df,
-               aes(x = 0, xend = Dim1, y = 0, yend = Dim2),
-               arrow = arrow(length = unit(0.35, "cm")),
-               colour = "gray", alpha = 0.6,
-               inherit.aes = FALSE) + 
-  geom_text(data = vec.df,
-            aes(x = Dim1, y = Dim2, label = shortnames),
-            size = 4, color = "red") +
-  labs(x = pcoaA1, 
-       y = pcoaA2,
-       colour = "Vegetation") +
-  scale_colour_viridis_d() +
-  ggtitle("Bray-Curtis") +
-  theme_bw() +  
-  theme(legend.position = "right",
-        axis.title = element_text(face = "bold", size = 12), 
-        axis.text = element_text(size = 10))
-dev.off()
-
-
-
-pcoa <- cmdscale(ja, k = nrow(input$map_loaded) - 1, eig = T)
-d_env <- input$map_loaded %>%
-  dplyr::select(conductivity, nitrate_nitrogen, organic_carbon, 
-                bio1, bio12, AI, ph, latitude, longitude)
-set.seed(100)
-ef <- envfit(pcoa, d_env, permutations = 999, na.rm = TRUE)
-ef
-ordiplot(pcoa)
-plot(ef, cex = 0.5, p.max = 0.05)
-multiplier <- ordiArrowMul(ef)
-multiplier
-vec.df <- as.data.frame(ef$vectors$arrows*sqrt(ef$vectors$r)) %>%
-  mutate(Dim1 = Dim1 * multiplier,
-         Dim2 = Dim2 * multiplier) %>%
-  mutate(variables = rownames(.)) %>%
-  filter(ef$vectors$pvals < 0.05) %>%
-  mutate(shortnames = c("NO3", "C", "Temp", "Precip", "AI", "pH", "Lat", "Long"))
-pcoaA1 <- paste("PC1: ", round((eigenvals(pcoa)/sum(eigenvals(pcoa)))[1]*100, 1), "%")
-pcoaA2 <- paste("PC2: ", round((eigenvals(pcoa)/sum(eigenvals(pcoa)))[2]*100, 1), "%")
-input$map_loaded$Axis01 <- vegan::scores(pcoa)[,1]
-input$map_loaded$Axis02 <- vegan::scores(pcoa)[,2]
-pdf("InitialFigs/BradyComp_Jac.pdf", width = 7, height = 5)
-ggplot(input$map_loaded, aes(Axis01, Axis02)) +
-  geom_point(size = 3, pch = 16, alpha = 0.5) +
-  geom_segment(data = vec.df,
-               aes(x = 0, xend = Dim1, y = 0, yend = Dim2),
-               arrow = arrow(length = unit(0.35, "cm")),
-               colour = "gray", alpha = 0.6,
-               inherit.aes = FALSE) + 
-  geom_text(data = vec.df,
-            aes(x = Dim1, y = Dim2, label = shortnames),
-            size = 4, color = "red") +
-  labs(x = pcoaA1, 
-       y = pcoaA2,
-       colour = "Vegetation") +
-  scale_colour_viridis_d() +
-  ggtitle("Jaccard") +
-  theme_bw() +  
-  theme(legend.position = "right",
-        axis.title = element_text(face = "bold", size = 12), 
-        axis.text = element_text(size = 10))
-dev.off()
-
-
-
-pcoa <- cmdscale(Wun, k = nrow(input$map_loaded) - 1, eig = T)
-d_env <- input$map_loaded %>%
-  dplyr::select(conductivity, nitrate_nitrogen, organic_carbon, 
-                bio1, bio12, AI, ph, latitude, longitude)
-set.seed(100)
-ef <- envfit(pcoa, d_env, permutations = 999, na.rm = TRUE)
-ef
-ordiplot(pcoa)
-plot(ef, cex = 0.5, p.max = 0.05)
-multiplier <- ordiArrowMul(ef)
-multiplier
-vec.df <- as.data.frame(ef$vectors$arrows*sqrt(ef$vectors$r)) %>%
-  mutate(Dim1 = Dim1 * multiplier,
-         Dim2 = Dim2 * multiplier) %>%
-  mutate(variables = rownames(.)) %>%
-  filter(ef$vectors$pvals < 0.05) %>%
-  mutate(shortnames = c("C", "Temp", "AI", "pH", "Long."))
-pcoaA1 <- paste("PC1: ", round((eigenvals(pcoa)/sum(eigenvals(pcoa)))[1]*100, 1), "%")
-pcoaA2 <- paste("PC2: ", round((eigenvals(pcoa)/sum(eigenvals(pcoa)))[2]*100, 1), "%")
-input$map_loaded$Axis01 <- vegan::scores(pcoa)[,1]
-input$map_loaded$Axis02 <- vegan::scores(pcoa)[,2]
-pdf("InitialFigs/BradyComp_Wun.pdf", width = 7, height = 5)
-ggplot(input$map_loaded, aes(Axis01, Axis02)) +
-  geom_point(size = 3, pch = 16, alpha = 0.5) +
-  geom_segment(data = vec.df,
-               aes(x = 0, xend = Dim1, y = 0, yend = Dim2),
-               arrow = arrow(length = unit(0.35, "cm")),
-               colour = "gray", alpha = 0.6,
-               inherit.aes = FALSE) + 
-  geom_text(data = vec.df,
-            aes(x = Dim1, y = Dim2, label = shortnames),
-            size = 4, color = "blue") +
-  labs(x = pcoaA1, 
-       y = pcoaA2,
-       colour = "Vegetation") +
-  scale_colour_viridis_d() +
-  ggtitle("Weighted UniFrac") +
-  theme_bw() +  
-  theme(legend.position = "right",
-        axis.title = element_text(face = "bold", size = 12), 
-        axis.text = element_text(size = 10))
-dev.off()
-
-# Need to remove 4 outliers
-out <- input$map_loaded %>%
-  filter(Axis01 > 0.5)
-input_filt <- filter_data(input,
-                          filter_cat = "sampleID",
-                          filter_vals = out$sampleID)
-
-
-pcoa <- cmdscale(un, k = nrow(input$map_loaded) - 1, eig = T)
-d_env <- input$map_loaded %>%
-  dplyr::select(conductivity, nitrate_nitrogen, organic_carbon, 
-                bio1, bio12, AI, ph, latitude, longitude)
-set.seed(100)
-ef <- envfit(pcoa, d_env, permutations = 999, na.rm = TRUE)
-ef
-ordiplot(pcoa)
-plot(ef, cex = 0.5)
-multiplier <- ordiArrowMul(ef)
-multiplier
-vec.df <- as.data.frame(ef$vectors$arrows*sqrt(ef$vectors$r)) %>%
-  mutate(Dim1 = Dim1 * multiplier,
-         Dim2 = Dim2 * multiplier) %>%
-  mutate(variables = rownames(.)) %>%
-  filter(ef$vectors$pvals < 0.05) %>%
-  mutate(shortnames = c("Cond", "NO3", "C", "Temp", "Precip", "AI", "pH", "Lat", "Long"))
-pcoaA1 <- paste("PC1: ", round((eigenvals(pcoa)/sum(eigenvals(pcoa)))[1]*100, 1), "%")
-pcoaA2 <- paste("PC2: ", round((eigenvals(pcoa)/sum(eigenvals(pcoa)))[2]*100, 1), "%")
-input$map_loaded$Axis01 <- vegan::scores(pcoa)[,1]
-input$map_loaded$Axis02 <- vegan::scores(pcoa)[,2]
-pdf("InitialFigs/BradyComp_un.pdf", width = 7, height = 5)
-ggplot(input$map_loaded, aes(Axis01, Axis02)) +
-  geom_point(size = 3, pch = 16, alpha = 0.5) +
-  geom_segment(data = vec.df,
-               aes(x = 0, xend = Dim1, y = 0, yend = Dim2),
-               arrow = arrow(length = unit(0.35, "cm")),
-               colour = "gray", alpha = 0.6,
-               inherit.aes = FALSE) + 
-  geom_text(data = vec.df,
-            aes(x = Dim1, y = Dim2, label = shortnames),
-            size = 4, color = "blue") +
-  labs(x = pcoaA1, 
-       y = pcoaA2,
-       colour = "Vegetation") +
-  scale_colour_viridis_d() +
-  ggtitle("Unweighted UniFrac") +
-  theme_bw() +  
-  theme(legend.position = "right",
-        axis.title = element_text(face = "bold", size = 12), 
-        axis.text = element_text(size = 10))
-dev.off()
-
-
-#### _n219 ####
-# Subset to 219 samples with no NA in 16 soil variables
-d_sylph_env <- input$map_loaded %>%
-  filter(is.na(ph) == FALSE) %>%
-  dplyr::select(sampleID, all_of(env_vars))
-n_na <- c()
-for (i in 1:ncol(d_sylph_env)) {
-  n_na[i] <- sum(is.na(d_sylph_env[,i]))
-}
-n_na
-
-# Remove variables with correlations > 0.7
-d_sylph_env <- d_sylph_env %>%
-  column_to_rownames(var = "sampleID") %>%
-  dplyr::select(where(~ all(!is.na(.)))) %>%
-  dplyr::select(-latitude, -longitude) %>% # Can add later
-  dplyr::select(-boron_hot_cacl2, -exc_sodium, -sulphur) %>% # Correlated w cond.
-  dplyr::select(-bio12) # Correlated with AI
-names(d_sylph_env)
-
-#plot(d_sylph_env$conductivity, d_sylph_env$boron_hot_cacl2)
-#plot(d_sylph_env$conductivity, d_sylph_env$exc_sodium)
-#plot(d_sylph_env$conductivity, d_sylph_env$sulphur)
-# plot(d_sylph_env$bio12, d_sylph_env$AI)
-# plot(d_sylph_env$bio1, d_sylph_env$AI)
-m <- cor(d_sylph_env)
-pdf("InitialFigs/Env_Corrplot219.pdf", width = 8, height = 6)
-corrplot(m, 
-         method = "number",
-         type = "lower",
-         diag = FALSE,
-         hclust.method = "ward.D2",
-         tl.cex = 0.5,
-         number.cex = 0.5)
-dev.off()
-
-# Remake inputs and dissimilarity matrices
-input_sub <- filter_data(input,
-                         filter_cat = "sampleID",
-                         keep_vals = rownames(d_sylph_env))
-bc_sub <- calc_dm(input_sub$data_loaded)
-ja_sub <- calc_dm(input_sub$data_loaded, "jaccard")
-otu <- phyloseq::otu_table(input_sub$data_loaded, taxa_are_rows = T)
-tax <- phyloseq::tax_table(as.matrix(input_sub$taxonomy_loaded))
-map <- phyloseq::sample_data(input_sub$map_loaded)
-tree <- read_tree("data/brady182_fasttree_nogap.tree")
-is.rooted(tree) # FALSE. Tree is not rooted
-tree <- midpoint.root(tree)
-is.rooted(tree) # TRUE. Tree is now rooted at midpoint
-tree$tip.label
-tree$tip.label <- gsub(".fna", "", tree$tip.label)
-tree$tip.label <- gsub("Brady_", "", tree$tip.label)
-tl <- as.data.frame(tree$tip.label) %>%
-  set_names("tip.label") %>%
-  filter(tip.label %notin% rownames(input_sub$data_loaded))
-tree_pruned <- drop.tip(tree,
-                        tip = tl$tip.label)
-tree_pruned$tip.label
-input.phy <- phyloseq::phyloseq(otu, tax, map, tree_pruned)
-Wun_sub <- distance(input.phy, 
-                    method = "wunifrac", 
-                    type = "samples")
-un_sub <- distance(input.phy, 
-                   method = "unifrac", 
-                   type = "samples")
-
-# Check distribution of values
-qplot(bc_sub, Wun_sub) +
-  scale_y_continuous(breaks = c(0, 0.25, 0.5, 0.75, 1, 1.25))
-# Wun has values above 1! Need to fix
-range(Wun_sub) # 0 to 1.123804
-# Diagnose
-any(phy_tree(input.phy)$edge.length < 0) # FALSE, good, no negative branch lengths
-# Normalize
-Wun_sub <- Wun_sub / max(Wun_sub)
-range(Wun_sub) # 0 to 1
-qplot(bc_sub, Wun_sub)
-range(un_sub) # Good
-qplot(ja_sub, Wun_sub)
-qplot(un_sub, Wun_sub)
-
-# bc, ja, un all suffer from lots of 1s. 
-# Use Weighted UniFrac! It was developed for this purpose!
-
-
-
-#### __dbRDA ####
-mod0 <- dbrda(bc_sub ~ 1, d_sylph_env)  # Model with intercept only
-mod1 <- dbrda(bc_sub ~ ., d_sylph_env)  # Model with all explanatory variables
-set.seed(100)
-mod <- ordistep(mod0, scope = formula(mod1))
-mod$anova # temp, Mg, Mn, Zn, Al, pH, NO3, AI, C, K, Cond
-
-mod0 <- dbrda(ja_sub ~ 1, d_sylph_env)  # Model with intercept only
-mod1 <- dbrda(ja_sub ~ ., d_sylph_env)  # Model with all explanatory variables
-set.seed(100)
-mod <- ordistep(mod0, scope = formula(mod1))
-mod$anova # temp, Mg, Mn, Al, Zn, pH, NO3, AI, C, K, Cond 
-
-mod0 <- dbrda(Wun_sub ~ 1, d_sylph_env)  # Model with intercept only
-mod1 <- dbrda(Wun_sub ~ ., d_sylph_env)  # Model with all explanatory variables
-set.seed(100)
-mod <- ordistep(mod0, scope = formula(mod1))
-mod$anova # P, C
-# Wasn't working, updated vegan and did outside test, then worked.
-#saveRDS(Wun_sub, "~/Desktop/dist.rds")
-#saveRDS(d_sylph_env, "~/Desktop/env.rds")
-
-mod0 <- dbrda(un_sub ~ 1, d_sylph_env)  # Model with intercept only
-mod1 <- dbrda(un_sub ~ ., d_sylph_env)  # Model with all explanatory variables
-set.seed(100)
-mod <- ordistep(mod0, scope = formula(mod1))
-mod$anova # temp, Mg, pH, Mn, Zn, Al, NO3, AI, Fe, P, C
-
-
-
-#### __PCoA ####
-# PCoAs (for each distance matrix)
-pcoa <- cmdscale(bc_sub, k = nrow(input_sub$map_loaded) - 1, eig = T)
-set.seed(100)
-ef <- envfit(pcoa, d_sylph_env, permutations = 999, na.rm = TRUE)
-ef
-ordiplot(pcoa)
-plot(ef, cex = 0.5, p.max = 0.05)
-multiplier <- ordiArrowMul(ef)
-multiplier
-vec.df <- as.data.frame(ef$vectors$arrows*sqrt(ef$vectors$r)) %>%
-  mutate(Dim1 = Dim1 * multiplier,
-         Dim2 = Dim2 * multiplier) %>%
-  mutate(variables = rownames(.)) %>%
-  filter(ef$vectors$pvals < 0.05) %>%
-  mutate(shortnames = c("Cu", "Fe", "Mn", "Zn", "Al", "Ca", "Mg", "K", "NO3",
-                        "C", "pH", "P", "Temp", "AI"))
-pcoaA1 <- paste("PC1: ", round((eigenvals(pcoa)/sum(eigenvals(pcoa)))[1]*100, 1), "%")
-pcoaA2 <- paste("PC2: ", round((eigenvals(pcoa)/sum(eigenvals(pcoa)))[2]*100, 1), "%")
-input_sub$map_loaded$Axis01 <- vegan::scores(pcoa)[,1]
-input_sub$map_loaded$Axis02 <- vegan::scores(pcoa)[,2]
-pdf("InitialFigs/BradyComp_bc_sub.pdf", width = 7, height = 5)
-ggplot(input_sub$map_loaded, aes(Axis01, Axis02)) +
-  geom_point(size = 3, pch = 16, alpha = 0.4) +
-  geom_segment(data = vec.df,
-               aes(x = 0, xend = Dim1, y = 0, yend = Dim2),
-               arrow = arrow(length = unit(0.35, "cm")),
-               colour = "gray", alpha = 0.6,
-               inherit.aes = FALSE) + 
-  geom_text(data = vec.df,
-            aes(x = Dim1, y = Dim2, label = shortnames),
-            size = 4, color = "red") +
-  labs(x = pcoaA1, 
-       y = pcoaA2,
-       colour = "Vegetation") +
-  scale_colour_viridis_d() +
-  ggtitle("Bray-Curtis") +
-  theme_bw() +  
-  theme(legend.position = "right",
-        axis.title = element_text(face = "bold", size = 12), 
-        axis.text = element_text(size = 10))
-dev.off()
-
-
-
-pcoa <- cmdscale(ja_sub, k = nrow(input_sub$map_loaded) - 1, eig = T)
-set.seed(100)
-ef <- envfit(pcoa, d_sylph_env, permutations = 999, na.rm = TRUE)
-ef
-ordiplot(pcoa)
-plot(ef, cex = 0.5, p.max = 0.05)
-multiplier <- ordiArrowMul(ef)
-multiplier
-vec.df <- as.data.frame(ef$vectors$arrows*sqrt(ef$vectors$r)) %>%
-  mutate(Dim1 = Dim1 * multiplier,
-         Dim2 = Dim2 * multiplier) %>%
-  mutate(variables = rownames(.)) %>%
-  filter(ef$vectors$pvals < 0.05) %>%
-  mutate(shortnames = c("Cu", "Fe", "Mn", "Zn", "Al", "Ca", "Mg", "K", "NO3",
-                        "C", "pH", "P", "Temp", "AI"))
-pcoaA1 <- paste("PC1: ", round((eigenvals(pcoa)/sum(eigenvals(pcoa)))[1]*100, 1), "%")
-pcoaA2 <- paste("PC2: ", round((eigenvals(pcoa)/sum(eigenvals(pcoa)))[2]*100, 1), "%")
-input_sub$map_loaded$Axis01 <- vegan::scores(pcoa)[,1]
-input_sub$map_loaded$Axis02 <- vegan::scores(pcoa)[,2]
-pdf("InitialFigs/BradyComp_jac_sub.pdf", width = 7, height = 5)
-ggplot(input_sub$map_loaded, aes(Axis01, Axis02)) +
-  geom_point(size = 3, pch = 16, alpha = 0.5) +
-  geom_segment(data = vec.df,
-               aes(x = 0, xend = Dim1, y = 0, yend = Dim2),
-               arrow = arrow(length = unit(0.35, "cm")),
-               colour = "gray", alpha = 0.6,
-               inherit.aes = FALSE) + 
-  geom_text(data = vec.df,
-            aes(x = Dim1, y = Dim2, label = shortnames),
-            size = 4, color = "red") +
-  labs(x = pcoaA1, 
-       y = pcoaA2,
-       colour = "Vegetation") +
-  scale_colour_viridis_d() +
-  ggtitle("Jaccard") +
-  theme_bw() +  
-  theme(legend.position = "right",
-        axis.title = element_text(face = "bold", size = 12), 
-        axis.text = element_text(size = 10))
-dev.off()
-
-
-
-pcoa <- cmdscale(Wun_sub, k = nrow(input_sub$map_loaded) - 1, eig = T)
-set.seed(100)
-ef <- envfit(pcoa, d_sylph_env, permutations = 999, na.rm = TRUE)
-ef
-ordiplot(pcoa)
-plot(ef, cex = 0.5, p.max = 0.05)
-multiplier <- ordiArrowMul(ef)
-multiplier
-vec.df <- as.data.frame(ef$vectors$arrows*sqrt(ef$vectors$r)) %>%
-  mutate(Dim1 = Dim1 * multiplier,
-         Dim2 = Dim2 * multiplier) %>%
-  mutate(variables = rownames(.)) %>%
-  filter(ef$vectors$pvals < 0.05) %>%
-  mutate(shortnames = c("Cu", "Mn", "Zn", "Al", "Ca", "K", "NO3",
-                        "C", "P", "Temp", "Aridity"))
-pcoaA1 <- paste("PC1: ", round((eigenvals(pcoa)/sum(eigenvals(pcoa)))[1]*100, 1), "%")
-pcoaA2 <- paste("PC2: ", round((eigenvals(pcoa)/sum(eigenvals(pcoa)))[2]*100, 1), "%")
-input_sub$map_loaded$Axis01 <- vegan::scores(pcoa)[,1]
-input_sub$map_loaded$Axis02 <- vegan::scores(pcoa)[,2]
-pdf("InitialFigs/BradyComp_Wun_sub.pdf", width = 7, height = 5)
-ggplot(input_sub$map_loaded, aes(Axis01, Axis02)) +
-  geom_point(size = 3, pch = 16, alpha = 0.5) +
-  geom_segment(data = vec.df,
-               aes(x = 0, xend = Dim1, y = 0, yend = Dim2),
-               arrow = arrow(length = unit(0.35, "cm")),
-               colour = "gray", alpha = 0.6,
-               inherit.aes = FALSE) + 
-  geom_text(data = subset(vec.df, shortnames %notin% c("Zn", "Aridity")),
-            aes(x = Dim1, y = Dim2, label = shortnames),
-            size = 4, color = "red") +
-  geom_text(data = subset(vec.df, shortnames %in% c("Zn")),
-            aes(x = Dim1, y = Dim2, label = shortnames),
-            size = 4, color = "red", nudge_y = -0.02) +
-  geom_text(data = subset(vec.df, shortnames %in% c("Aridity")),
-            aes(x = Dim1, y = Dim2, label = shortnames),
-            size = 4, color = "red", nudge_y = 0.02) +
-  labs(x = pcoaA1, 
-       y = pcoaA2,
-       colour = "Vegetation") +
-  scale_colour_viridis_d() +
-  theme_bw() +  
-  theme(legend.position = "right",
-        axis.title = element_text(face = "bold", size = 12), 
-        axis.text = element_text(size = 10))
-dev.off()
-
-pcoa <- cmdscale(un_sub, k = nrow(input_sub$map_loaded) - 1, eig = T)
-set.seed(100)
-ef <- envfit(pcoa, d_sylph_env, permutations = 999, na.rm = TRUE)
-ef
-ordiplot(pcoa)
-plot(ef, cex = 0.5)
-multiplier <- ordiArrowMul(ef)
-multiplier
-vec.df <- as.data.frame(ef$vectors$arrows*sqrt(ef$vectors$r)) %>%
-  mutate(Dim1 = Dim1 * multiplier,
-         Dim2 = Dim2 * multiplier) %>%
-  mutate(variables = rownames(.)) %>%
-  filter(ef$vectors$pvals < 0.05) %>%
-  mutate(shortnames = c("Cond", "Cu", "Fe", "Mn", "Zn", "Al", "Ca", "Mg", "K", "NO3",
-                        "C", "pH", "P", "Temp", "AI"))
-pcoaA1 <- paste("PC1: ", round((eigenvals(pcoa)/sum(eigenvals(pcoa)))[1]*100, 1), "%")
-pcoaA2 <- paste("PC2: ", round((eigenvals(pcoa)/sum(eigenvals(pcoa)))[2]*100, 1), "%")
-input_sub$map_loaded$Axis01 <- vegan::scores(pcoa)[,1]
-input_sub$map_loaded$Axis02 <- vegan::scores(pcoa)[,2]
-pdf("InitialFigs/BradyComp_un_sub.pdf", width = 7, height = 5)
-ggplot(input_sub$map_loaded, aes(Axis01, Axis02)) +
-  geom_point(size = 3, pch = 16, alpha = 0.5) +
-  geom_segment(data = vec.df,
-               aes(x = 0, xend = Dim1, y = 0, yend = Dim2),
-               arrow = arrow(length = unit(0.35, "cm")),
-               colour = "gray", alpha = 0.6,
-               inherit.aes = FALSE) + 
-  geom_text(data = vec.df,
-            aes(x = Dim1, y = Dim2, label = shortnames),
-            size = 4, color = "red") +
-  labs(x = pcoaA1, 
-       y = pcoaA2,
-       colour = "Vegetation") +
-  scale_colour_viridis_d() +
-  ggtitle("Unweighted UniFrac") +
-  theme_bw() +  
-  theme(legend.position = "right",
-        axis.title = element_text(face = "bold", size = 12), 
-        axis.text = element_text(size = 10))
-dev.off()
-
-
-
-#### __Varpart ####
-# varpart can take 2, 3, or 4 explanatory matrices
-# Partition variation into geography, climate, soil
-var_env <- d_sylph_env %>%
-  mutate(latitude = input_sub$map_loaded$latitude,
-         longitude = input_sub$map_loaded$longitude)
-mod <- varpart(bc_sub, 
-               ~ latitude + longitude, 
-               ~ bio1 + AI,
-               ~ conductivity + dtpa_copper + dtpa_iron + dtpa_manganese + dtpa_zinc + exc_aluminium + exc_calcium + exc_magnesium + exc_potassium + nitrate_nitrogen + organic_carbon + ph + phosphorus_colwell,
-               data = var_env)
-mod
-summary(mod)
-plot(mod, bg = 2:4, Xnames = c('Geog.', 'Clim.', 'Soil')) # 18%
-
-mod <- varpart(ja_sub, 
-               ~ latitude + longitude, 
-               ~ bio1 + AI,
-               ~ conductivity + dtpa_copper + dtpa_iron + dtpa_manganese + dtpa_zinc + exc_aluminium + exc_calcium + exc_magnesium + exc_potassium + nitrate_nitrogen + organic_carbon + ph + phosphorus_colwell,
-               data = var_env)
-mod
-summary(mod)
-plot(mod, bg = 2:4, Xnames = c('Geog.', 'Clim.', 'Soil')) # 15%
-
-
-mod <- varpart(Wun_sub, 
-               ~ latitude + longitude, 
-               ~ bio1 + AI,
-               ~ conductivity + dtpa_copper + dtpa_iron + dtpa_manganese + dtpa_zinc + exc_aluminium + exc_calcium + exc_magnesium + exc_potassium + nitrate_nitrogen + organic_carbon + ph + phosphorus_colwell,
-               data = var_env)
-mod
-summary(mod)
-pdf("InitialFigs/BradyComp_varpart.pdf", width = 7, height = 5)
-plot(mod, bg = 2:4, Xnames = c('Geog.', 'Clim.', 'Soil')) # 7%
-dev.off()
-
-mod <- varpart(un_sub, 
-               ~ latitude + longitude, 
-               ~ bio1 + AI,
-               ~ conductivity + dtpa_copper + dtpa_iron + dtpa_manganese + dtpa_zinc + exc_aluminium + exc_calcium + exc_magnesium + exc_potassium + nitrate_nitrogen + organic_carbon + ph + phosphorus_colwell,
-               data = var_env)
-mod
-summary(mod)
-plot(mod, bg = 2:4, Xnames = c('Geog.', 'Clim.', 'Soil')) # 20
-
-# Weighted UniFrac has the least % variation explained
-# This might be because the others have artifcats with lots of 1s so less variation
-
-
-
-#### __Mantel ####
-# Need to remake geog.dist and env.dist, recycle code from above with input$map_loaded
-# Run Partial Mantels to control for one and test the other
-# Geographic distance
-dist.geog <- geosphere::distm(cbind(input_sub$map_loaded$longitude, 
-                                    input_sub$map_loaded$latitude),
-                              fun = distHaversine)
-rownames(dist.geog) <- input_sub$map_loaded$sampleID
-colnames(dist.geog) <- input_sub$map_loaded$sampleID
-#dist.geog[upper.tri(dist.geog, diag = TRUE)] <- NA
-#hist(dist.geog)
-
-# Environmental distance
-dist.env <- as.matrix(dist(d_sylph_env, method = "euclidean", diag = FALSE, upper = FALSE))
-rownames(dist.env) <- input_sub$map_loaded$sampleID
-colnames(dist.env) <- input_sub$map_loaded$sampleID
-#dist.env[upper.tri(dist.env, diag = TRUE)] <- NA
-#hist(dist.env)
-
-set.seed(100)
-mantel(bc_sub, dist.env, permutations = 2000)
-set.seed(100)
-mantel.partial(bc_sub, dist.env, dist.geog, permutations = 2000)
-set.seed(100)
-mantel(bc_sub, dist.geog, permutations = 2000)
-set.seed(100)
-mantel.partial(bc_sub, dist.geog, dist.env, permutations = 2000)
-
-set.seed(100)
-mantel(ja_sub, dist.env, permutations = 2000)
-set.seed(100)
-mantel.partial(ja_sub, dist.env, dist.geog, permutations = 2000)
-set.seed(100)
-mantel(ja_sub, dist.geog, permutations = 2000)
-set.seed(100)
-mantel.partial(ja_sub, dist.geog, dist.env, permutations = 2000)
-
-set.seed(100)
-mantel(Wun_sub, dist.env, permutations = 2000)
-set.seed(100)
-mantel.partial(Wun_sub, dist.env, dist.geog, permutations = 2000)
-set.seed(100)
-mantel(Wun_sub, dist.geog, permutations = 2000)
-set.seed(100)
-mantel.partial(Wun_sub, dist.geog, dist.env, permutations = 2000)
-
-set.seed(100)
-mantel(un_sub, dist.env, permutations = 2000)
-set.seed(100)
-mantel.partial(un_sub, dist.env, dist.geog, permutations = 2000)
-set.seed(100)
-mantel(un_sub, dist.geog, permutations = 2000)
-set.seed(100)
-mantel.partial(un_sub, dist.geog, dist.env, permutations = 2000)
-
-pdf("InitialFigs/BradyComp_BC_geog.pdf", width = 7, height = 5)
-qplot(as.dist(dist.geog), bc_sub, geom = c("point","smooth"), alpha = I(0.1)) +
-  labs(x = "Geographic Distance (m)",
-       y = "Bray-Curtis Dissimilarity") +
-  ylim(0, 1) +
-  theme_bw() +
-  theme(axis.title = element_text(face = "bold", size = 12), 
-        axis.text = element_text(size = 10),
-        plot.margin = unit(c(0.1,0.1,0.1,0.15),"cm"))
-dev.off()
-
-qplot(as.dist(dist.geog), Wun_sub, geom = c("point","smooth"), alpha = I(0.1)) +
-  labs(x = "Geographic Distance (m)",
-       y = "Weighted UniFrac") +
-  ylim(0, 1) +
-  theme_bw() +
-  theme(axis.title = element_text(face = "bold", size = 12), 
-        axis.text = element_text(size = 10),
-        plot.margin = unit(c(0.1,0.1,0.1,0.15),"cm"))
-
-qplot(as.dist(dist.geog), un_sub, geom = c("point","smooth"), alpha = I(0.1)) +
-  labs(x = "Geographic Distance (m)",
-       y = "Weighted UniFrac") +
-  ylim(0, 1) +
-  theme_bw() +
-  theme(axis.title = element_text(face = "bold", size = 12), 
-        axis.text = element_text(size = 10),
-        plot.margin = unit(c(0.1,0.1,0.1,0.15),"cm"))
-# Says missing or non-finite value...
-Wun_sub_mat <- as.matrix(Wun_sub)
-un_sub_mat <- as.matrix(un_sub)
-sum(is.na(un_sub_mat))
-sum(is.infinite(un_sub_mat))
-sum(is.finite(un_sub_mat))
-sum(is.finite(Wun_sub_mat))
-
-
-
-#### __GDM ####
-# Again, test geog.dist and env.dist
-
-# Remake as full, not just lower triangle
-dist.env <- as.matrix(dist(d_sylph_env, method = "euclidean", diag = T, upper = T))
-rownames(dist.env) <- input_sub$map_loaded$sampleID
-colnames(dist.env) <- input_sub$map_loaded$sampleID
-
-# GDM - BC
-sum(rownames(as.matrix(bc_sub)) != input_sub$map_loaded$sampleID)
-gdm.sampID <- as.numeric(rownames(as.matrix(bc_sub)))
-bacteria.distance.v.mat.gdm <- cbind(gdm.sampID, as.matrix(bc_sub))
-geography.distance.v.mat.gdm <- cbind(gdm.sampID, dist.geog)
-env.distance.v.mat.gdm <- cbind(gdm.sampID, dist.env)
-dim(bacteria.distance.v.mat.gdm)
-dim(geography.distance.v.mat.gdm)
-dim(env.distance.v.mat.gdm)
-input_sub$map_loaded$gdm.sampID <- input_sub$map_loaded$sampleID
-gdm.data <- dplyr::select(input_sub$map_loaded, gdm.sampID, latitude, longitude)
-gdm.bray <- formatsitepair(bioData = bacteria.distance.v.mat.gdm,
-                           bioFormat = 3,
-                           siteColumn = "gdm.sampID",
-                           XColumn = "longitude",
-                           YColumn = "latitude",
-                           predData = gdm.data,
-                           distPreds = list(env.distance.v.mat.gdm))
-gdm.1 <- gdm(gdm.bray, geo = TRUE) # Worked
-summary(gdm.1)
-# Variable Importance
-gdm.varImp(gdm.bray, geo = TRUE)
-#Geographic         80.498
-#matrix_1           15.055
-
-# GDM - Jaccard
-sum(rownames(as.matrix(ja_sub)) != input_sub$map_loaded$sampleID)
-gdm.sampID <- as.numeric(rownames(as.matrix(ja_sub)))
-bacteria.distance.v.mat.gdm <- cbind(gdm.sampID, as.matrix(ja_sub))
-geography.distance.v.mat.gdm <- cbind(gdm.sampID, dist.geog)
-env.distance.v.mat.gdm <- cbind(gdm.sampID, dist.env)
-dim(bacteria.distance.v.mat.gdm)
-dim(geography.distance.v.mat.gdm)
-dim(env.distance.v.mat.gdm)
-input_sub$map_loaded$gdm.sampID <- input_sub$map_loaded$sampleID
-gdm.data <- dplyr::select(input_sub$map_loaded, gdm.sampID, latitude, longitude)
-gdm.jac <- formatsitepair(bioData = bacteria.distance.v.mat.gdm,
-                          bioFormat = 3,
-                          siteColumn = "gdm.sampID",
-                          XColumn = "longitude",
-                          YColumn = "latitude",
-                          predData = gdm.data,
-                          distPreds = list(env.distance.v.mat.gdm))
-gdm.1 <- gdm(gdm.jac, geo = TRUE) # Worked
-summary(gdm.1)
-# Variable Importance
-gdm.varImp(gdm.jac, geo = TRUE)
-# Geographic         78.328
-# matrix_1           17.992
-
-# GDM - Weighted UniFrac
-# Try with fewer env variables since didn't converge, or has 0 sum coeff.
-d_sylph_env2 <- d_sylph_env %>%
-  dplyr::select(conductivity, nitrate_nitrogen, organic_carbon, ph,
-                phosphorus_colwell, bio1, AI)
-dist.env2 <- as.matrix(dist(d_sylph_env2, method = "euclidean", diag = T, upper = T))
-rownames(dist.env2) <- input_sub$map_loaded$sampleID
-colnames(dist.env2) <- input_sub$map_loaded$sampleID
-
-sum(rownames(as.matrix(Wun_sub)) != input_sub$map_loaded$sampleID)
-gdm.sampID <- as.numeric(rownames(as.matrix(Wun_sub)))
-bacteria.distance.v.mat.gdm <- cbind(gdm.sampID, as.matrix(Wun_sub))
-geography.distance.v.mat.gdm <- cbind(gdm.sampID, dist.geog)
-env.distance.v.mat.gdm <- cbind(gdm.sampID, dist.env2)
-dim(bacteria.distance.v.mat.gdm)
-dim(geography.distance.v.mat.gdm)
-dim(env.distance.v.mat.gdm)
-input_sub$map_loaded$gdm.sampID <- input_sub$map_loaded$sampleID
-gdm.data <- dplyr::select(input_sub$map_loaded, gdm.sampID, latitude, longitude)
-gdm.Wun <- formatsitepair(bioData = bacteria.distance.v.mat.gdm,
-                          bioFormat = 3,
-                          siteColumn = "gdm.sampID",
-                          XColumn = "longitude",
-                          YColumn = "latitude",
-                          predData = gdm.data,
-                          distPreds = list(env.distance.v.mat.gdm))
-gdm.1 <- gdm(gdm.Wun, geo = TRUE) # Worked!
-summary(gdm.1)
-plot(gdm.1)
-# Variable Importance
-gdm.varImp(gdm.Wun, geo = TRUE)
-#Geographic         89.069 (p = 0.00)
-#matrix_1           12.409 (p = 0.16)
-
-# GDM - UniFrac
-sum(rownames(as.matrix(un_sub)) != input_sub$map_loaded$sampleID)
-gdm.sampID <- as.numeric(rownames(as.matrix(un_sub)))
-bacteria.distance.v.mat.gdm <- cbind(gdm.sampID, as.matrix(un_sub))
-geography.distance.v.mat.gdm <- cbind(gdm.sampID, dist.geog)
-env.distance.v.mat.gdm <- cbind(gdm.sampID, dist.env2)
-dim(bacteria.distance.v.mat.gdm)
-dim(geography.distance.v.mat.gdm)
-dim(env.distance.v.mat.gdm)
-input_sub$map_loaded$gdm.sampID <- input_sub$map_loaded$sampleID
-gdm.data <- dplyr::select(input_sub$map_loaded, gdm.sampID, latitude, longitude)
-gdm.un <- formatsitepair(bioData = bacteria.distance.v.mat.gdm,
-                          bioFormat = 3,
-                          siteColumn = "gdm.sampID",
-                          XColumn = "longitude",
-                          YColumn = "latitude",
-                          predData = gdm.data,
-                          distPreds = list(env.distance.v.mat.gdm))
-gdm.1 <- gdm(gdm.un, geo = TRUE) # Response data have values greater than 1. !? (Not true)
-# Weird error, can't trouble shoot, but not needed anyway
-summary(gdm.1)
-plot(gdm.1)
-# Variable Importance
-gdm.varImp(gdm.1, geo = TRUE)
-#Geographic         23.522
-#matrix_1           73.438
-
-
-
-#### 11. Sylph 915 n 331 ####
-# Reran Sylph but removed Strain 3 and 4 and GTDB with > 4 missing bac120
-# Run on all 331 BASE metagenomes that met criteria!
-# Make tree with those detected by Sylph
-# Rerun code from section 8/9 with the new input data, new UniFrac
-d_331 <- read.csv("data/metadata_331.csv") %>%
-  mutate("Climate Class" = ifelse(AI < 0.5, "Arid to semi-arid",
-                                  ifelse(AI >= 0.5 & AI < 0.65, "Dry sub-humid",
-                                         "Humid")))
-bacGT <- read.delim("~/Desktop/Fierer/Strains/bac120_metadata_r220.tsv") # takes a while to load
-
 
 #### Commercial
 # 19 genomes from Kohlmeier et al. 2025
@@ -6907,13 +2121,43 @@ comGTDB <- bacGT %>%
   filter(ncbi_genbank_assembly_accession %in% com)
 com_ubiq <- ubiq %>%
   filter(GenomeID %in% comGTDB$ncbi_genbank_assembly_accession)
+# com_samples <- sylph_strains_331 %>% # Need to make sylph_strains_331 first
+#   filter(rownames(.) %in% com_ubiq$GenomeID) %>%
+#   select_if(function(x){!all(is.na(x))}) %>%
+#   rownames_to_column(var = "GenomeID")
+# names(com_samples)
+#write.csv(com_samples, "data/commercial_detection.csv", row.names = F)
+
+# Check where commercial samples were found
+# d_com <- d_331 %>%
+#   filter(sampleID %in% names(com_samples))
+# coords_trans <- st_as_sf(d_com, 
+#                          coords = c('longitude', 'latitude'), 
+#                          crs=4326)
+# sf_oz <- ozmap("states")
+# map <- ggplot(data = sf_oz) + 
+#   geom_sf(fill = "grey90", color = "white") +
+#   geom_sf(data = coords_trans,
+#           aes(fill = AI, shape = `Climate Class`), 
+#           size = 3, alpha = 1, color = "black", stroke = 0.3) +
+#   scale_shape_manual(values = c(21, 24, 22)) +
+#   annotation_scale() +
+#   annotation_north_arrow(pad_x = unit(1, "cm"), pad_y = unit(1, "cm"),
+#                          height = unit(1, "cm"), width = unit(1, "cm"),) +
+#   scale_fill_distiller(palette = "RdYlBu", direction = 1) +
+#   guides(shape = guide_legend(order = 2),
+#          fill = guide_colorbar(order = 1)) +
+#   xlim(111, 155) +
+#   ylim(43, 12) +
+#   labs(fill = "Aridity\nindex") +
+#   theme_minimal()
+# pdf("InitialFigs/CommercialMap.pdf", width = 7, height = 5)
+# map
+# dev.off()
 
 
 
 #### _Setup ####
-contig_check <- read.delim("data/sylph_profile_brady915_n331.tsv") %>%
-  group_by(Sample_file, Genome_file) %>%
-  summarise(count = n()) # 1 contig per genome
 strains_sylph_raw <- read.delim("data/sylph_profile_brady915_n331.tsv") %>%
   mutate(GenomeID = gsub("/scratch/alpine/clbd1748/Australia_copy/Brady915/",
                          "", Genome_file))
@@ -7041,17 +2285,17 @@ checkm_181 <- checkM_all %>%
   filter(GenomeID %in% sylph_detected$GenomeID) %>%
   rbind(., gtdb_checkM) %>%
   mutate(GenomeID = gsub("GCA_016616885.1", "Reference", GenomeID))
-row_dat <- data.frame(GenomeID = rownames(sylph_strains_331)) %>%
-  left_join(., gtdb89_use, by = c("GenomeID" = "ncbi_genbank_assembly_accession")) %>%
-  replace_na(list(genome_size = 8085095, Type = "StrainFinder", Source = "Soil")) %>%
-  mutate(Type = ifelse(GenomeID == "Reference", "StrainFinder Ref", Type)) %>%
-  mutate(Type = ifelse(GenomeID %in% com_ubiq$GenomeID, "Commercial", Type)) %>% # Add later
-  left_join(., checkm_181, by = "GenomeID") %>%
-  mutate(GenomeSize = 100 * genome_size / checkm_completeness) %>%
-  left_join(., brady_func, by = "GenomeID") %>%
-  mutate(Function = ifelse(Nfix >= 5 & Nod >= 4, "N fix. Sym.",
-                           ifelse(Nfix >= 5 & Nod < 4, "N fix. Free",
-                                  ifelse(Photo > 0, "Photosyn.", " "))))
+# row_dat <- data.frame(GenomeID = rownames(sylph_strains_331)) %>%
+#   left_join(., gtdb89_use, by = c("GenomeID" = "ncbi_genbank_assembly_accession")) %>%
+#   replace_na(list(genome_size = 8085095, Type = "StrainFinder", Source = "Soil")) %>%
+#   mutate(Type = ifelse(GenomeID == "Reference", "StrainFinder Ref", Type)) %>%
+#   mutate(Type = ifelse(GenomeID %in% com_ubiq$GenomeID, "Commercial", Type)) %>% # Add later
+#   left_join(., checkm_181, by = "GenomeID") %>%
+#   mutate(GenomeSize = 100 * genome_size / checkm_completeness) %>%
+#   left_join(., brady_func, by = "GenomeID") %>%
+#   mutate(Function = ifelse(Nfix >= 5 & Nod >= 4, "N fix. Sym.",
+#                            ifelse(Nfix >= 5 & Nod < 4, "N fix. Free",
+#                                   ifelse(Photo > 0, "Photosyn.", " "))))
 #saveRDS(row_dat, "data/row_data.rds")
 row_dat <- readRDS("data/row_data.rds")
 table(row_dat$Function)
@@ -7096,38 +2340,103 @@ ann_colors <- list(`Genome Type` = c("Commercial" = "#EE3377",
                    StrainFinder = c(No = "#F8766D",
                                     Yes = "#619CFF"),
                    Aridity = colorRampPalette(brewer.pal(n = 3, name = "RdYlBu"))(100))
-tree_data_maxmin <- tree_data_maxmin %>%
-  mutate(SpeciesShort = gsub("Bradyrhizobium ", "", Species))
-pheatmap(sylph_strains_331,
-         color = colorRampPalette(brewer.pal(n = 7, name = "Reds"))(100),
-         legend = T,
-         cluster_rows = F,
-         cluster_cols = F,
-         cellwidth = 1,
-         cellheight = 3,
-         angle_col = 90,
-         display_numbers = F,
-         number_color = "black",
-         annotation_col = ann_cols,
-         annotation_row = ann_rows,
-         annotation_colors = ann_colors,
-         annotation_names_row = F,
-         fontsize = 6,
-         fontsize_row = 3,
-         na_col = "white",
-         border_color = "white",
-         labels_row = rev(tree_data_maxmin$SpeciesShort),
-         show_colnames = F,
-         filename = "FinalFigs/Figure3.png",
-         width = 6,
-         height = 8)
-dev.off()
-dev.set(dev.next())
-dev.set(dev.next())
+hm <- pheatmap(sylph_strains_331,
+               color = colorRampPalette(brewer.pal(n = 7, name = "Reds"))(100),
+               legend = T,
+               cluster_rows = F,
+               cluster_cols = F,
+               cellwidth = 1,
+               cellheight = 3,
+               angle_col = 90,
+               display_numbers = F,
+               number_color = "black",
+               annotation_col = ann_cols,
+               annotation_row = ann_rows,
+               annotation_colors = ann_colors,
+               annotation_names_row = F,
+               fontsize = 6,
+               fontsize_row = 3,
+               na_col = "white",
+               border_color = "white",
+               labels_row = rev(tree_data_maxmin$SpeciesShort),
+               show_colnames = F)
+save_pheatmap_pdf(hm, "FinalFigs/FigureS4forPPT.pdf")
 
+# Remake with presence/absence and show black, will make easier to see
+# Use this as the main figure and have rel abund one as supp
+sylph_strains_331_pa <- sylph_strains_331
+sylph_strains_331_pa[sylph_strains_331_pa > 0] <- 1
+hm <- pheatmap(sylph_strains_331_pa,
+               breaks = seq(0, 1, length.out = 3),
+               color = c("black"),
+               legend = F,
+               cluster_rows = F,
+               cluster_cols = F,
+               cellwidth = 1,
+               cellheight = 3,
+               angle_col = 90,
+               display_numbers = F,
+               number_color = "black",
+               annotation_col = ann_cols,
+               annotation_row = ann_rows,
+               annotation_colors = ann_colors,
+               annotation_names_row = F,
+               fontsize = 6,
+               fontsize_row = 3,
+               na_col = "white",
+               border_color = "white",
+               labels_row = rev(tree_data_maxmin$SpeciesShort),
+               show_colnames = F)
+save_pheatmap_pdf(hm, "FinalFigs/Figure3forPPT.pdf")
+  
 
 
 ### _Tree ####
+#### __915 ####
+# Show big tree as Figure S3
+# Made this for 993 genomes before more stringent filtering to 915
+# Can prune to 915
+brady993_tree <- read.tree("data/brady993_fasttree_nogap.tree")
+brady993_tree$tip.label
+brady993_tree$tip.label <- gsub(".fna", "", brady993_tree$tip.label)
+toPrune <- data.frame(GenomeID = brady993_tree$tip.label) %>%
+  filter(GenomeID %notin% c(brady915_ncbi$Header, "Brady_Reference"))
+brady915_tree <- drop.tip(brady993_tree,
+                          tip = toPrune$GenomeID)
+brady915_tree$tip.label <- gsub("Brady_", "", brady915_tree$tip.label)
+ggtree(brady915_tree)
+sum(sylph_detected$GenomeID %in% brady915_tree$tip.label) # 181
+tipcols <- ifelse(brady915_tree$tip.label %in% sylph_detected$GenomeID,
+                  "Detected",
+                  "Not detected")
+brady915_tree$tip.cols <- tipcols
+tc <- data.frame(GenomeID = brady915_tree$tip.label,
+                 Sylph = brady915_tree$tip.cols) %>%
+  left_join(., tax, by = c("GenomeID" = "ncbi_genbank_assembly_accession")) %>%
+  mutate(Species = coalesce(Species, GenomeID)) %>%
+  mutate(Species = gsub("Reference", "Bradyrhizobium diazoefficiens_F (Reference)", Species))
+pdf("FinalFigs/FigureS3.pdf", width = 8.5, height = 17)
+ggtree(brady915_tree, linewidth = 0.1)  %<+% tc +
+  geom_tiplab(size = 0.5, vjust = 0.5, aes(color = Sylph, label = Species)) +
+  scale_color_manual(values = c("red", "grey50")) +
+  geom_treescale() +
+  geom_nodelab(aes(label = label), size = 0.5) +
+  guides(color = guide_legend(override.aes = list(size = 5))) +
+  theme(legend.position = c(0.7, 0.3))
+dev.off()
+png("FinalFigs/FigureS3.png", width = 8.5, height = 17, units = "in", res = 300)
+ggtree(brady915_tree, linewidth = 0.1)  %<+% tc +
+  geom_tiplab(size = 0.5, vjust = 0.5, aes(color = Sylph, label = Species)) +
+  scale_color_manual(values = c("red", "grey50")) +
+  geom_treescale() +
+  geom_nodelab(aes(label = label), size = 0.5) +
+  guides(color = guide_legend(override.aes = list(size = 5))) +
+  theme(legend.position = c(0.7, 0.3))
+dev.off()
+
+
+
+#### __181 ####
 # Tree (for big context tree, see section 9)
 brady181_tree <- read.tree("data/brady181_fasttree_nogap.tree")
 brady181_tree$tip.label
@@ -7142,14 +2451,14 @@ tc <- data.frame(GenomeID = brady181_tree$tip.label) %>%
   left_join(., tax, by = c("GenomeID" = "ncbi_genbank_assembly_accession")) %>%
   mutate(Species = coalesce(Species, GenomeID)) %>%
   mutate(Species = gsub("Reference", "Bradyrhizobium diazoefficiens_F (Reference)", Species))
-pdf("InitialFigs/brady181_Fasttree_Bac120_2026AA.pdf", width = 8.5, height = 11)
+#pdf("InitialFigs/brady181_Fasttree_Bac120_2026AA.pdf", width = 8.5, height = 11)
 ggtree(brady181_tree, linewidth = 0.1)  %<+% tc +
   geom_tiplab(size = 1, vjust = 0.5, aes(label = Species)) +
   geom_treescale() +
   geom_nodelab(aes(label = label), size = 0.75) +
   guides(color = guide_legend(override.aes = list(size = 5))) +
   theme(legend.position = c(0.7, 0.3))
-dev.off()
+#dev.off()
 
 # Tree with Aridity info
 # Need genomeID rownames, then column for min AI and max AI
@@ -7165,7 +2474,7 @@ tree_data_maxmin <- strains_sylph %>%
   as.data.frame() %>%
   left_join(., tc, by = "GenomeID") %>%
   mutate(SpeciesShort = gsub("Bradyrhizobium ", "", Species)) %>%
-  #left_join(., row_dat, by = "GenomeID") %>%
+  left_join(., row_dat, by = "GenomeID") %>%
   mutate(SpeciesShort = gsub(" \\(Reference\\)", "", SpeciesShort))
 # Or all AI data
 tree_data <- strains_sylph %>%
@@ -7183,28 +2492,10 @@ tree_data$GenomeID <- factor(tree_data$GenomeID,
                              levels = rev(get_taxa_name(p)))
 
 p <- ggtree(brady181_tree, linewidth = 0.2) +
+  geom_treescale() +
   theme(plot.margin = margin(0,-20,0,-15))
 p
 
-# s <- ggplot(tree_data) +
-#   geom_vline(xintercept = 0.5, linetype = "dotted") +
-#   geom_vline(xintercept = 0.65, linetype = "dotted") +
-#   geom_point(aes(x = AI, y = GenomeID), size = 0.5, colour = "black") +
-#   geom_point(data = tree_data_maxmin, 
-#              aes(x = minAI, y = GenomeID), size = 1, colour = "red") +
-#   geom_point(data = tree_data_maxmin, 
-#              aes(x = maxAI, y = GenomeID), size = 1, colour = "blue") +
-#   geom_segment(data = tree_data_maxmin, 
-#                aes(x = minAI, xend = maxAI, y = GenomeID, yend = GenomeID)) +
-#   labs(x = "Aridity index",
-#        y = NULL) +
-#   #scale_y_discrete(expand = c(0.01, 0.01)) +
-#   scale_y_discrete(labels = tree_data_maxmin$Species) +
-#   theme_bw() +
-#   theme(axis.text.y = element_text(size = 3),
-#         axis.ticks.y = element_blank(),
-#         panel.grid.major.y = element_blank(),
-#         panel.grid.minor.y = element_blank())
 s <- ggplot(tree_data, aes(x = AI, y = GenomeID, colour = Type)) +
   geom_vline(xintercept = 0.5, linetype = "dotted") +
   geom_vline(xintercept = 0.65, linetype = "dotted") +
@@ -7230,16 +2521,22 @@ s <- ggplot(tree_data, aes(x = AI, y = GenomeID, colour = Type)) +
         panel.grid = element_blank())
 s
 
-pdf("FinalFigs/Figure6.pdf", width = 8, height = 8)
+pdf("FinalFigs/FigureS6.pdf", width = 8, height = 8)
 plot_grid(p, s, align = "h", rel_widths = c(0.5, 0.5))
 dev.off()
-png("FinalFigs/Figure6.png", width = 8, height = 8, units = "in", res = 300)
+png("FinalFigs/FigureS6.png", width = 8, height = 8, units = "in", res = 300)
 plot_grid(p, s, align = "h", rel_widths = c(0.5, 0.5))
 dev.off()
 
 # Try to make 3 groupings
 # Genomes detected in at least 2 samples
 # All samples only in a specific climate class
+ubiq <- data.frame(GenomeID = rownames(input$data_loaded),
+                   Ubiquity = rowSums(input$data_loaded > 0)) %>%
+  left_join(., row_dat, by = "GenomeID") %>%
+  mutate(Perc = Ubiquity/331*100) %>%
+  mutate(Nfix = ifelse(Function == "N fix. Free" | Function == "N fix. Sym.",
+                       "Yes", "No"))
 one <- ubiq %>%
   filter(Ubiquity < 2) # 109 genomes
 two <- ubiq %>%
@@ -7321,8 +2618,8 @@ ggplot(ubiq_two, aes(Ubiquity, range)) +
                                "yellow")) +
   theme_bw() +
   theme(legend.position = "inside",
-        legend.position.inside = c(1, 1),
-        legend.justification = c(1, 1),
+        legend.position.inside = c(1, 0),
+        legend.justification = c(1, 0),
         legend.background = element_blank(),
         axis.title = element_text(size = 12),
         axis.text = element_text(size = 10))
@@ -7346,8 +2643,8 @@ tree_data_maxmin <- strains_sylph %>%
   dplyr::select(SampleID, GenomeID) %>%
   left_join(., d_sylph_temp, by = "SampleID") %>%
   group_by(GenomeID) %>%
-  summarise(minAI = min(bio1),
-            maxAI = max(bio1)) %>%
+  summarise(minT = min(bio1),
+            maxT = max(bio1)) %>%
   as.data.frame() %>%
   left_join(., tc, by = "GenomeID") %>%
   mutate(SpeciesShort = gsub("Bradyrhizobium ", "", Species)) %>%
@@ -7369,28 +2666,13 @@ tree_data$GenomeID <- factor(tree_data$GenomeID,
                              levels = rev(get_taxa_name(p)))
 
 p <- ggtree(brady181_tree, linewidth = 0.2) +
+  geom_treescale() +
   theme(plot.margin = margin(0,-20,0,-15))
 p
-# s <- ggplot(tree_data) +
-#   geom_point(aes(x = bio1, y = GenomeID), size = 0.5, colour = "black") +
-#   geom_point(data = tree_data_maxmin, 
-#              aes(x = minT, y = GenomeID), size = 1, colour = "red") +
-#   geom_point(data = tree_data_maxmin, 
-#              aes(x = maxT, y = GenomeID), size = 1, colour = "blue") +
-#   geom_segment(data = tree_data_maxmin, 
-#                aes(x = minT, xend = maxT, y = GenomeID, yend = GenomeID)) +
-#   labs(x = "MAT (\u00b0C)",
-#        y = NULL) +
-#   scale_y_discrete(labels = tree_data_maxmin$Species) +
-#   theme_bw() +
-#   theme(axis.text.y = element_text(size = 3),
-#         axis.ticks.y = element_blank(),
-#         panel.grid.major.y = element_blank(),
-#         panel.grid.minor.y = element_blank())
-# s
+
 s <- ggplot(tree_data, aes(x = bio1, y = GenomeID, colour = Type)) +
   geom_segment(data = tree_data_maxmin, 
-               aes(x = minAI, xend = maxAI, y = GenomeID, yend = GenomeID,
+               aes(x = minT, xend = maxT, y = GenomeID, yend = GenomeID,
                    colour = Type)) +
   geom_point(size = 0.5) +
   labs(x = "MAT (\u00b0C)",
@@ -7411,16 +2693,22 @@ s <- ggplot(tree_data, aes(x = bio1, y = GenomeID, colour = Type)) +
         panel.grid = element_blank())
 s
 
-pdf("FinalFigs/FigureS6.pdf", width = 8, height = 8)
+pdf("FinalFigs/FigureS7.pdf", width = 8, height = 8)
 plot_grid(p, s, align = "h", rel_widths = c(0.5, 0.5))
 dev.off()
-png("FinalFigs/FigureS6.png", width = 8, height = 8, units = "in", res = 300)
+png("FinalFigs/FigureS7.png", width = 8, height = 8, units = "in", res = 300)
 plot_grid(p, s, align = "h", rel_widths = c(0.5, 0.5))
 dev.off()
 
 # Try to make 2 groupings
 # Genomes detected in at least 2 samples
 # Narrow range vs. wide range
+ubiq <- data.frame(GenomeID = rownames(input$data_loaded),
+                   Ubiquity = rowSums(input$data_loaded > 0)) %>%
+  left_join(., row_dat, by = "GenomeID") %>%
+  mutate(Perc = Ubiquity/331*100) %>%
+  mutate(Nfix = ifelse(Function == "N fix. Free" | Function == "N fix. Sym.",
+                       "Yes", "No"))
 one <- ubiq %>%
   filter(Ubiquity < 2) # 109 genomes
 two <- ubiq %>%
@@ -7439,8 +2727,8 @@ ubiq <- ubiq %>%
   mutate(Group = ifelse(range < 5, "Narrow",
                         ifelse(range >=5 & range <= 10, "Intermediate",
                                "Wide")))
-ggplot(ubiq, aes(GenomeSize, range)) +
-  geom_point(aes(fill = Type), pch = 21, size = 3) +
+ggplot(ubiq, aes(GenomeSize.x, range)) +
+  geom_point(aes(fill = Type.x), pch = 21, size = 3) +
   labs(x = "Estimated genome size (bp)",
        y = "Temperature range") +
   scale_fill_manual(values = c("#EE3377",
@@ -7457,8 +2745,8 @@ ggplot(ubiq, aes(GenomeSize, range)) +
         axis.text = element_text(size = 10))
 ubiq_two <- ubiq %>%
   filter(Ubiquity >= 2)
-ggplot(ubiq_two, aes(GenomeSize, range)) +
-  geom_point(aes(fill = Type), pch = 21, size = 3) +
+ggplot(ubiq_two, aes(GenomeSize.x, range)) +
+  geom_point(aes(fill = Type.x), pch = 21, size = 3) +
   geom_smooth(method = "lm") +
   labs(x = "Estimated genome size (bp)",
        y = "Temperature range") +
@@ -7475,10 +2763,11 @@ ggplot(ubiq_two, aes(GenomeSize, range)) +
         axis.title = element_text(size = 12),
         axis.text = element_text(size = 10))
 ggplot(ubiq_two, aes(Ubiquity, range)) +
-  geom_point(aes(fill = Type), pch = 21, size = 3) +
+  geom_point(aes(fill = Type.x), pch = 21, size = 3) +
   geom_smooth(method = "lm") +
   labs(x = "Ubiquity",
-       y = "Temperature range") +
+       y = "Temperature range",
+       fill = "Type") +
   scale_fill_manual(values = c("#EE3377",
                                "#66CCEE",
                                "#332288",
@@ -7486,87 +2775,39 @@ ggplot(ubiq_two, aes(Ubiquity, range)) +
                                "yellow")) +
   theme_bw() +
   theme(legend.position = "inside",
-        legend.position.inside = c(1, 1),
-        legend.justification = c(1, 1),
+        legend.position.inside = c(1, 0),
+        legend.justification = c(1, 0),
         legend.background = element_blank(),
         axis.title = element_text(size = 12),
         axis.text = element_text(size = 10))
 summary(lm(range ~ Ubiquity, data = ubiq_two)) # R2 = 0.30, p < 0.001
-summary(lm(range ~ GenomeSize, data = ubiq_two)) # R2 = 0.04, p = 0.08
+summary(lm(range ~ GenomeSize.x, data = ubiq_two)) # R2 = 0.04, p = 0.08
 
 # Do a third time but for pH? (range 3.1 to 8.6, 3.2 to 8.6 for Sylph)
 
 
 
-# Big tree (subset the previous 993 tree down to the 915 in this rerun)
-brady915_2 <- brady915 %>%
-  mutate(GenomeID = gsub(".gz", "", Header))
-toRemove <- as.data.frame(brady993_tree$tip.label) %>%
-  set_names("GenomeID") %>%
-  filter(GenomeID %notin% brady915_2$GenomeID)
-brady993_tree <- read.tree("data/brady993_fasttree_nogap.tree")
-length(brady993_tree$tip.label) # 993
-brady915_tree <- ape::drop.tip(brady993_tree, toRemove$GenomeID)
-length(brady915_tree$tip.label) # 915, good
-brady915_tree$tip.label
-brady915_tree$tip.label <- gsub(".fna", "", brady915_tree$tip.label)
-brady915_tree$tip.label <- gsub("Brady_", "", brady915_tree$tip.label)
-sum(sylph_detected$GenomeID %in% brady915_tree$tip.label) # 181
-tipcols <- ifelse(brady915_tree$tip.label %in% sylph_detected$GenomeID,
-                  "Detected",
-                  "Not detected")
-brady915_tree$tip.cols <- tipcols
-tc <- data.frame(GenomeID = brady915_tree$tip.label,
-                 Sylph = brady915_tree$tip.cols) %>%
-  left_join(., tax, by = c("GenomeID" = "ncbi_genbank_assembly_accession")) %>%
-  mutate(Species = coalesce(Species, GenomeID)) %>%
-  mutate(Species = gsub("Reference", "Bradyrhizobium diazoefficiens_F (Reference)", Species))
-tcd <- tc %>%
-  filter(Sylph == "Detected")
-pdf("FinalFigs/FigureS3.pdf", width = 8.5, height = 17)
-ggtree(brady915_tree, linewidth = 0.1)  %<+% tc +
-  geom_tiplab(size = 0.5, vjust = 0.5, aes(color = Sylph, label = Species)) +
-  #geom_tippoint(aes(shape = Sylph, color = Sylph)) +
-  scale_color_manual(values = c("red", "grey50")) +
-  geom_treescale() +
-  geom_nodelab(aes(label = label), size = 0.5) +
-  guides(color = guide_legend(override.aes = list(size = 5))) +
-  theme(legend.position = c(0.7, 0.3))
-dev.off()
-png("FinalFigs/FigureS3.png", width = 8.5, height = 17, units = "in", res = 300)
-ggtree(brady915_tree, linewidth = 0.1)  %<+% tc +
-  geom_tiplab(size = 0.5, vjust = 0.5, aes(color = Sylph, label = Species)) +
-  #geom_tippoint(aes(shape = Sylph, color = Sylph)) +
-  scale_color_manual(values = c("red", "grey50")) +
-  geom_treescale() +
-  geom_nodelab(aes(label = label), size = 0.5) +
-  guides(color = guide_legend(override.aes = list(size = 5))) +
-  theme(legend.position = c(0.7, 0.3))
-dev.off()
-
-
-
 #### _Comp ####
 # Composition and drivers, Bray-Curtis, Jaccard, Weighted UniFrac, Unweighted UniFrac
-sp_comp <- sylph_strains_331 %>%
-  replace(is.na(.), 0)
-input <- list()
-input$map_loaded <- d_sylph_ai_sort
-rownames(input$map_loaded) <- d_sylph_ai_sort$sampleID
-sum(d_sylph_ai_sort$sampleID != names(sp_comp))
-input$data_loaded <- sp_comp
-input$taxonomy_loaded <- sp_comp %>%
-  mutate(taxonomy1 = "Bacteria",
-         taxonomy2 = "Proteobacteria",
-         taxonomy3 = "Alphaproteobacteria",
-         taxonomy4 = "Hyphomicrobiales",
-         taxonomy5 = "Nitrobacteraceae",
-         taxonomy6 = "Bradyrhizobium",
-         taxonomy7 = rownames(.)) %>%
-  dplyr::select(taxonomy1, taxonomy2, taxonomy3, taxonomy4,
-                taxonomy5, taxonomy6, taxonomy7)
-sum(rownames(input$data_loaded) != rownames(input$taxonomy_loaded))
-saveRDS(input, "data/input_sylph.rds")
+# sp_comp <- sylph_strains_331 %>%
+#   replace(is.na(.), 0)
+# input <- list()
+# input$map_loaded <- d_sylph_ai_sort
+# rownames(input$map_loaded) <- d_sylph_ai_sort$sampleID
+# sum(d_sylph_ai_sort$sampleID != names(sp_comp))
+# input$data_loaded <- sp_comp
+# input$taxonomy_loaded <- sp_comp %>%
+#   mutate(taxonomy1 = "Bacteria",
+#          taxonomy2 = "Proteobacteria",
+#          taxonomy3 = "Alphaproteobacteria",
+#          taxonomy4 = "Hyphomicrobiales",
+#          taxonomy5 = "Nitrobacteraceae",
+#          taxonomy6 = "Bradyrhizobium",
+#          taxonomy7 = rownames(.)) %>%
+#   dplyr::select(taxonomy1, taxonomy2, taxonomy3, taxonomy4,
+#                 taxonomy5, taxonomy6, taxonomy7)
+# sum(rownames(input$data_loaded) != rownames(input$taxonomy_loaded))
+#saveRDS(input, "data/input_sylph.rds")
 input <- readRDS("data/input_sylph.rds")
 
 # Prevalence
@@ -7582,7 +2823,7 @@ input$map_loaded$shannon <- vegan::diversity(input$data_loaded,
                                              MARGIN = 2)
 range(input$map_loaded$rich)
 range(input$map_loaded$shannon)
-pdf("InitialFigs/BradyComp_RichAI.pdf", width = 7, height = 5)
+#pdf("InitialFigs/BradyComp_RichAI.pdf", width = 7, height = 5)
 ggplot(input$map_loaded, aes(AI, rich)) +
   geom_point(size = 3, pch = 16, alpha = 0.5) +
   geom_smooth(se = F) +
@@ -7592,7 +2833,7 @@ ggplot(input$map_loaded, aes(AI, rich)) +
   theme_bw() +  
   theme(axis.title = element_text(face = "bold", size = 12), 
         axis.text = element_text(size = 10))
-dev.off()
+#dev.off()
 
 # Check nitrate vs rich
 summary(lm(rich ~ nitrate_nitrogen, data = input$map_loaded)) # p = 0.27
@@ -7631,7 +2872,7 @@ un <- distance(input.phy,
                method = "unifrac", 
                type = "samples")
 set.seed(100)
-mantel(bc, Wun, permutations = 2000)
+mantel(bc, Wun, permutations = 2000) # r = 0.23, p = 0.0005
 
 set.seed(100)
 mantel(Wun, un, permutations = 2000) # r = 0.6, p = 0.0005
@@ -7692,6 +2933,8 @@ dev.off()
 
 
 # Ubiquity, genome size etc.
+# Reload those data here
+row_dat <- readRDS("data/row_data.rds")
 ubiq <- data.frame(GenomeID = rownames(input$data_loaded),
                    Ubiquity = rowSums(input$data_loaded > 0)) %>%
   left_join(., row_dat, by = "GenomeID") %>%
@@ -7699,8 +2942,8 @@ ubiq <- data.frame(GenomeID = rownames(input$data_loaded),
   mutate(Nfix = ifelse(Function == "N fix. Free" | Function == "N fix. Sym.",
                        "Yes", "No"))
 table(ubiq$Function)
-table(ubiq$Nfix) # 145 to 36
-t.test(GenomeSize ~ Nfix, data = ubiq) # p = 0.52
+table(ubiq$Nfix) # 145 yes to 36 no
+t.test(GenomeSize ~ Nfix, data = ubiq) # No difference, p = 0.52
 ggplot(ubiq, aes(Nfix, GenomeSize)) +
   geom_boxplot(outliers = F) +
   geom_jitter(width = 0.25) +
@@ -7711,11 +2954,11 @@ ggplot(ubiq, aes(Nfix, Ubiquity)) +
   geom_boxplot(outliers = F) +
   geom_jitter(width = 0.25) +
   theme_bw()
-# Careful - this could be driven by the Strains! Rerun below
+# Careful - this could be driven by the StrainFinder MAGs! Rerun below
 
 summary(lm(GenomeSize ~ Ubiquity, data = ubiq))
 cor.test(ubiq$GenomeSize, ubiq$Ubiquity, method = "pearson")
-figS4 <- ggplot(ubiq, aes(Ubiquity, GenomeSize)) +
+figS5 <- ggplot(ubiq, aes(Ubiquity, GenomeSize)) +
   geom_point(aes(fill = Type), pch = 21, size = 3) +
   labs(x = "Prevalence (n samples detected)",
        y = "Estimated genome size (bp)") +
@@ -7731,11 +2974,11 @@ figS4 <- ggplot(ubiq, aes(Ubiquity, GenomeSize)) +
         legend.background = element_blank(),
         axis.title = element_text(size = 12),
         axis.text = element_text(size = 10))
-figS4
-pdf("FinalFigs/FigureS4.pdf", width = 8, height = 6)
-figS4
+figS5
+pdf("FinalFigs/FigureS5.pdf", width = 8, height = 6)
+figS5
 dev.off()
-png("FinalFigs/FigureS4.png", width = 8, height = 6, units = "in", res = 300)
+png("FinalFigs/FigureS5.png", width = 8, height = 6, units = "in", res = 300)
 figS4
 dev.off()
 
@@ -7772,7 +3015,7 @@ ggplot(ubiq_gtdb, aes(Ubiquity, genome_size)) +
 ubiq_sort <- ubiq %>%
   arrange(desc(Ubiquity), desc(Type)) %>%
   mutate(rank = row_number())
-pdf("InitialFigs/UbiquityRankAbund.pdf", width = 8, height = 6)
+#pdf("InitialFigs/UbiquityRankAbund.pdf", width = 8, height = 6)
 ggplot(ubiq_sort, aes(rank, Ubiquity)) +
   geom_point(aes(fill = Type), pch = 21, size = 3) +
   labs(x = "Rank",
@@ -7784,7 +3027,7 @@ ggplot(ubiq_sort, aes(rank, Ubiquity)) +
         legend.background = element_blank(),
         axis.title = element_text(size = 12),
         axis.text = element_text(size = 10))
-dev.off()
+#dev.off()
 
 
 
@@ -7825,9 +3068,7 @@ input$map_loaded$Axis01 <- vegan::scores(pcoa)[,1]
 input$map_loaded$Axis02 <- vegan::scores(pcoa)[,2]
 input$map_loaded$ClimateClass <- input$map_loaded$`Climate Class`
 micro.hulls <- ddply(input$map_loaded, "ClimateClass", find_hull)
-fig4 <- ggplot(input$map_loaded, aes(Axis01, Axis02)) +
-  # geom_polygon(data = micro.hulls, aes(colour = ClimateClass, fill = ClimateClass),
-  #              alpha = 0.1, show.legend = F, linewidth = NA) + # All overlapping
+ggplot(input$map_loaded, aes(Axis01, Axis02)) +
   geom_point(size = 3, pch = 16, alpha = 0.4) +
   geom_segment(data = vec.df,
                aes(x = 0, xend = Dim1, y = 0, yend = Dim2),
@@ -7841,12 +3082,10 @@ fig4 <- ggplot(input$map_loaded, aes(Axis01, Axis02)) +
        y = pcoaA2,
        colour = "Vegetation") +
   scale_colour_viridis_d() +
-  #ggtitle("Weighted UniFrac") +
   theme_bw() +  
   theme(legend.position = "right",
         axis.title = element_text(face = "bold", size = 12), 
         axis.text = element_text(size = 10))
-fig4
 
 pcoa <- cmdscale(un, k = nrow(input$map_loaded) - 1, eig = T)
 set.seed(100)
@@ -7855,7 +3094,8 @@ ef
 ordiplot(pcoa)
 plot(ef, cex = 0.5)
 
-# NMDS
+#### _NMDS ####
+# Just do on Weighted UniFrac for the manuscript. Figure S9.
 set.seed(100)
 nmds <- metaMDS(Wun, trymax = 200)
 stressplot(nmds)
@@ -7878,43 +3118,42 @@ vec.df <- as.data.frame(ef$vectors$arrows*sqrt(ef$vectors$r)) %>%
                         "H2O", "Temp."))
 input$map_loaded$Axis01 <- vegan::scores(nmds)[,1]
 input$map_loaded$Axis02 <- vegan::scores(nmds)[,2]
-fig4 <- ggplot(input$map_loaded, aes(Axis01, Axis02)) +
-  geom_point(size = 3, pch = 16, alpha = 0.4, aes(colour = `Climate Class`)) +
-  # geom_segment(data = vec.df,
-  #              aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2),
-  #              arrow = arrow(length = unit(0.35, "cm")),
-  #              colour = "gray", alpha = 0.6,
-  #              inherit.aes = FALSE) + 
-  # geom_text_repel(data = vec.df,
-  #                 aes(x = NMDS1, y = NMDS2, label = shortnames),
-  #                 size = 3, color = "red") +
+figS9 <- ggplot(input$map_loaded, aes(Axis01, Axis02)) +
+  geom_point(size = 3, pch = 16, alpha = 0.4) +
+  geom_segment(data = vec.df,
+               aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2),
+               arrow = arrow(length = unit(0.35, "cm")),
+               colour = "gray", alpha = 0.6,
+               inherit.aes = FALSE) +
+  geom_text_repel(data = vec.df,
+                  aes(x = NMDS1, y = NMDS2, label = shortnames),
+                  size = 3, color = "red") +
+  geom_text(data = NULL, aes(x = -0.5, y = -0.3, label = "stress = 0.13"), size = 3,
+            check_overlap = T) +
   labs(x = "NMDS1", 
        y = "NMDS2") +
   theme_bw() +  
   theme(legend.position = "right",
         axis.title = element_text(size = 12), 
-        axis.text = element_text(size = 10),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
         panel.grid = element_blank())
-fig4
-pdf("FinalFigs/Figure4.pdf", width = 7, height = 5)
-fig4
+figS9
+pdf("FinalFigs/FigureS9.pdf", width = 7, height = 5)
+figS9
 dev.off()
-png("FinalFigs/Figure4.png", width = 7, height = 5, units = "in", res = 300)
+png("FinalFigs/FigureS9.png", width = 7, height = 5, units = "in", res = 300)
 fig4
 dev.off()
 
 m <- adonis2(Wun ~ input$map_loaded$`Climate Class`)
-m # Sig but low R2 (0.03)
+m # Sig but very low R2 (0.03), and not much clustering. Could be driven by dispersion.
 m <- betadisper(Wun, input$map_loaded$`Climate Class`)
 anova(m) # Sig
 m <- adonis2(Wun ~ input$map_loaded$vegetation_type)
 m # Sig R2 = 0.10
 m <- betadisper(Wun, input$map_loaded$vegetation_type)
 anova(m) # Sig
-
-ord <- calc_ordination(Wun, 'NMDS')
-mctoolsr::plot_ordination(input, ord, color_cat = "vegetation_type", hulls = T)
-mctoolsr::plot_ordination(input, ord, color_cat = "Climate Class", hulls = T)
 
 
 
@@ -7950,7 +3189,7 @@ dbmod$anova # Temp, pH, Mn, Al, NO3, Zn
 
 #### __Varpart ####
 # varpart can take 2, 3, or 4 explanatory matrices
-# Partition variation into geography vs. environment
+# Here let's partition variation into geography vs. environment
 sum(rownames(d_env3) != input_sub$map_loaded$sampleID)
 var_env <- d_env3 %>%
   mutate(latitude = input_sub$map_loaded$latitude,
@@ -7961,14 +3200,6 @@ mod <- varpart(Wun_sub,
                data = var_env)
 mod
 summary(mod)
-par(mar = c(1, 1, 1, 1))
-par(mfrow = c(1,1))
-pdf("FinalFigs/FigureS4.pdf", width = 7, height = 5)
-plot(mod, bg = c("#F8766D", "#619CFF"), Xnames = c('Geog.', 'Env.')) # 30%
-dev.off()
-png("FinalFigs/FigureS4.png", width = 7, height = 5, units = "in", res = 300)
-plot(mod, bg = c("#F8766D", "#619CFF"), Xnames = c('Geog.', 'Env.')) # 30%
-dev.off()
 
 fig5a <- function() {
   par(
@@ -7978,10 +3209,12 @@ fig5a <- function() {
   plot(mod, bg = c("#F8766D", "#619CFF"), Xnames = c('Geog.', 'Env.'))
 }
 ggdraw(fig5a)
-pdf("FinalFigs/Figure5.pdf", width = 7, height = 5)
+
+# Need to run the GDM section first to make fig5b, then can come back here and combine
+pdf("FinalFigs/Figure4.pdf", width = 7, height = 5)
 plot_grid(fig5a, fig5b, ncol = 1, labels = "auto", vjust = 1, hjust = -1)
 dev.off()
-png("FinalFigs/Figure5.png", width = 7, height = 5, units = "in", res = 300)
+png("FinalFigs/Figure4.png", width = 7, height = 5, units = "in", res = 300)
 plot_grid(fig5a, fig5b, ncol = 1, labels = "auto", vjust = 1, hjust = -1)
 dev.off()
 
@@ -8010,7 +3243,7 @@ colnames(dist.env) <- input_sub$map_loaded$sampleID
 set.seed(100)
 mantel(Wun_sub, dist.geog, permutations = 2000)
 set.seed(100)
-mantel.partial(Wun_sub, dist.geog, dist.env, permutations = 2000)
+mantel.partial(Wun_sub, dist.geog, dist.env, permutations = 2000) # p = 0.75
 set.seed(100)
 mantel.partial(Wun_sub, dist.env, dist.geog, permutations = 2000) # r = 0.19, p = 0.0005
 
@@ -8042,7 +3275,7 @@ set.seed(100)
 mantel.partial(Wun_sub, dist.env, dist.geog, permutations = 2000) # r = 0.09, p = 0.003
 
 # Temperature
-# Geographic distance for full dataset
+# Note: Temp available for all samples, so can use geographic distance for full dataset
 dist.geog <- geosphere::distm(cbind(input$map_loaded$longitude, 
                                     input$map_loaded$latitude),
                               fun = distHaversine)
@@ -8067,16 +3300,26 @@ colnames(dist.env) <- input$map_loaded$sampleID
 
 set.seed(100)
 mantel.partial(Wun, dist.env, dist.geog, permutations = 2000) # r = 0.08, p = 0.009
+# R2 lower than temperature
 
 
 
 #### __GDM ####
 # Again, test geog.dist and env.dist
+# This will complement the variation partitioning
 
 # Remake as full, not just lower triangle
 dist.env <- as.matrix(dist(d_env_sig, method = "euclidean", diag = T, upper = T))
 rownames(dist.env) <- input_sub$map_loaded$sampleID
 colnames(dist.env) <- input_sub$map_loaded$sampleID
+
+# Remake with n = 216
+dist.geog <- geosphere::distm(cbind(input_sub$map_loaded$longitude, 
+                                    input_sub$map_loaded$latitude),
+                              fun = distHaversine)
+rownames(dist.geog) <- input_sub$map_loaded$sampleID
+colnames(dist.geog) <- input_sub$map_loaded$sampleID
+
 
 # GDM - Weighted UniFrac
 sum(rownames(as.matrix(Wun_sub)) != input_sub$map_loaded$sampleID)
@@ -8152,280 +3395,9 @@ fig5b
 
 
 
-#### 12. Brady 182 ####
-# Pangenomics of the 182 detected genomes
-#### _KO ####
-ko <- read.delim("data/KO-PRESENCE-ABSENCE.txt")
-brady_mat <- ko %>%
-  dplyr::select(-key) %>%
-  column_to_rownames(var = "KOfam") %>%
-  set_names(gsub("Brady_", "", names(.))) %>%
-  set_names(ifelse(grepl("GCA", names(.)) == TRUE,
-                         gsub("_1", "\\.1", names(.)),
-                         names(.))) %>%
-  dplyr::select(all_of(get_taxa_name(p)))
-names(brady_mat)
-sum(names(brady_mat) %in% brady182_tree$tip.label)
+#### 7. Strain Pangenomics ####
+# Pangenomics of the 181 detected strains
 
-# Get KOs in all 182, in 181/182, in 1
-k182 <- brady_mat %>%
-  mutate(sum = rowSums(.)) %>%
-  filter(sum == 182) %>%
-  select(-sum) # 839
-k181 <- brady_mat %>%
-  mutate(sum = rowSums(.)) %>%
-  filter(sum == 181) %>%
-  select(-sum) # 302
-k1 <- brady_mat %>%
-  mutate(sum = rowSums(.)) %>%
-  filter(sum == 1) %>%
-  select(-sum) # 78
-
-brady_mat_func <- brady_mat %>%
-  filter(grepl(ignore.case = F, "Nif|photosynthetic", rownames(.))) %>%
-  t() %>%
-  as.data.frame()
-sum(brady_mat_func$`nitrogenase iron protein NifH`)
-pheatmap(brady_mat_func,
-         color = c("grey80", "grey30"),
-         legend = T,
-         legend_breaks = c(0, 1),
-         cluster_rows = F,
-         cluster_cols = F,
-         angle_col = 315,
-         fontsize_row = 3,
-         fontsize_col = 6,
-         border_color = "white",
-         labels_row = rev(tree_data$Species),
-         filename = "InitialFigs/Brady182_func.png",
-         width = 4,
-         height = 10)
-dev.off()
-dev.set(dev.next())
-dev.set(dev.next())
-
-#### _CAZyme ####
-# AA 12 auxiliary activities
-# CB 8 carbohydrate-binding
-# CE 11 carbohydrate esterase
-# GH 87 glycoside hydrolase
-# GT 40 glycosyltransferase
-# PL 15 polysaccharide lyase
-
-cazy <- read.delim("data/CAZy-FREQUENCY.txt")
-
-brady_mat <- cazy %>%
-  mutate(CAZyme = gsub(".hmm", "", CAZyme)) %>%
-  mutate(Class = substr(CAZyme, start = 1, stop = 2)) %>%
-  mutate(Class = gsub("AA", "Auxiliary activities", Class)) %>%
-  mutate(Class = gsub("CB", "Carbohydrate-binding", Class)) %>%
-  mutate(Class = gsub("CE", "Carbohydrate esterase", Class)) %>%
-  mutate(Class = gsub("GH", "Glycoside hydrolase", Class)) %>%
-  mutate(Class = gsub("GT", "Glycosyltransferase", Class)) %>%
-  mutate(Class = gsub("PL", "Polysaccharide lyase", Class)) %>%
-  dplyr::select(-key, -CAZyme) %>%
-  group_by(Class) %>%
-  summarise_all(sum) %>%
-  column_to_rownames(var = "Class") %>%
-  set_names(gsub("Brady_", "", names(.))) %>%
-  set_names(ifelse(grepl("GCA", names(.)) == TRUE,
-                   gsub("_1", "\\.1", names(.)),
-                   names(.))) %>%
-  dplyr::select(all_of(get_taxa_name(p)))
-names(brady_mat)
-sum(names(brady_mat) %in% brady182_tree$tip.label)
-brady_mat_cazy <- brady_mat %>%
-  t() %>%
-  as.data.frame()
-pheatmap(brady_mat_cazy,
-         legend = T,
-         scale = "column",
-         cluster_rows = F,
-         cluster_cols = F,
-         angle_col = 315,
-         fontsize_row = 3,
-         fontsize_col = 6,
-         border_color = "white",
-         labels_row = rev(tree_data$Species),
-         filename = "InitialFigs/Brady182_cazy.png",
-         width = 4,
-         height = 10)
-dev.off()
-dev.set(dev.next())
-dev.set(dev.next())
-
-
-
-#### _Gene Clusters ####
-# From anvio pangenomics analysis
-# Pangenome summary file (anvi-summarize)
-# Note: 50945 gene clusters with 1,387,358 genes
-gc_all <- read.delim("~/Desktop/Fierer/Strains/Australia/Bradyrhizobium_Pan_gene_clusters_summary.txt")
-names(gc_all)
-length(unique(gc_all$gene_cluster_id))
-
-# Check if all genes in the gc have the same function
-gc_check_fun <- gc_all %>%
-  group_by(gene_cluster_id, COG20_FUNCTION_ACC) %>%
-  summarise(n = n())
-nrow(gc_check_fun) # 55179 is more than 50945, so no.
-
-
-
-#### __Patterns ####
-# Collapse to 1 row per gene cluster, with 1 COG category (most frequent) each
-# Wrangle COG Categories. Note 2392 unknown function
-gc <- read.delim("~/Desktop/Fierer/Strains/Australia/Bradyrhizobium_Pan_gene_clusters_summary.txt") %>%
-  arrange(gene_cluster_id, COG20_CATEGORY) %>%
-  group_by(gene_cluster_id) %>%
-  add_count(COG20_CATEGORY, sort = TRUE) %>% # Count occurrences of 'COG20_CATEGORY' within each group
-  slice_max(n, n = 1, with_ties = FALSE) %>% # Select the most frequent
-  #slice_head(n = 1) %>% # Old version, just getting first COG
-  mutate(COG20_CATEGORY = ifelse(COG20_CATEGORY == "", "Unknown", COG20_CATEGORY)) %>%
-  separate(COG20_CATEGORY, remove = F, sep = "\\|",
-           into = c("COG1", "COG2", "COG3", "COG4", "COG5", "COG6", "COG7", "COG8"))
-dup_fun <- gc %>%
-  rowwise() %>%
-  transmute(all_equal = n_distinct(c_across(c("COG1", "COG2", "COG3", "COG4", 
-                                              "COG5", "COG6", "COG7", "COG8")), 
-                                   na.rm = TRUE) == 1) %>%
-  ungroup()
-gc$all_equal <- dup_fun$all_equal
-gc <- gc %>%
-  mutate(COG20_Uniq = ifelse(all_equal == TRUE, COG1, "Multiple"))
-
-# Prep data and plot % of gene clusters by COG
-cog_df_all <- as.data.frame(table(gc$COG20_Uniq)) %>%
-  set_names(c("COG", "Freq")) %>%
-  mutate(All = Freq/nrow(gc)*100) %>%
-  dplyr::select(COG, All)
-gc_182 <- gc %>%
-  filter(num_genomes_gene_cluster_has_hits == 182)
-cog_df_182 <- as.data.frame(table(gc_182$COG20_Uniq)) %>%
-  set_names(c("COG", "Freq")) %>%
-  mutate("Genomes_182" = Freq/nrow(gc_182)*100) %>%
-  dplyr::select(COG, Genomes_182)
-gc_2181 <- gc %>%
-  filter(num_genomes_gene_cluster_has_hits <= 181 & num_genomes_gene_cluster_has_hits >= 2)
-cog_df_2181 <- as.data.frame(table(gc_2181$COG20_Uniq)) %>%
-  set_names(c("COG", "Freq")) %>%
-  mutate("Genomes_2_to_181" = Freq/nrow(gc_2181)*100) %>%
-  dplyr::select(COG, Genomes_2_to_181)
-gc_1 <- gc %>%
-  filter(num_genomes_gene_cluster_has_hits == 1)
-cog_df_1 <- as.data.frame(table(gc_1$COG20_Uniq)) %>%
-  set_names(c("COG", "Freq")) %>%
-  mutate("Genomes_1" = Freq/nrow(gc_1)*100) %>%
-  dplyr::select(COG, Genomes_1)
-cog_comb <- cog_df_all %>%
-  left_join(., cog_df_182, by = c("COG")) %>%
-  left_join(., cog_df_2181, by = c("COG")) %>%
-  left_join(., cog_df_1, by = c("COG")) %>%
-  #replace(is.na(.), 0) %>%
-  column_to_rownames(var = "COG")
-colSums(cog_comb, na.rm = T)
-min(cog_comb, na.rm = T)
-max(cog_comb, na.rm = T)
-pheatmap(cog_comb,
-         legend = T,
-         legend_breaks = c(0.0255037, 20, 40, 60, 80, 88.99676),
-         legend_labels = c("0", "20", "40", "60", "80", ""),
-         main = "            % Gene Clusters by COG",
-         cluster_rows = F,
-         cluster_cols = F,
-         labels_col = c("All (n = 50945)", 
-                        "In 182 genomes (n = 1505)",
-                        "In 2 to 181 genomes (n = 36654)",
-                        "In 1 genome (n = 12786)"),
-         angle_col = 315,
-         display_numbers = T,
-         number_color = "black",
-         fontsize_number = 10,
-         border_color = "white",
-         filename = "InitialFigs/Brady182_GeneClusters_COGs.png",
-         width = 6,
-         height = 8)
-dev.off()
-dev.set(dev.next())
-dev.set(dev.next())
-
-# Prep data and plot homogeneity by COG
-cog_df_all <- gc %>%
-  group_by(COG20_Uniq) %>%
-  summarise(All_FH = mean(functional_homogeneity_index),
-            All_GH = mean(geometric_homogeneity_index)) %>%
-  ungroup() %>%
-  rename(COG = COG20_Uniq)
-cog_df_182 <- gc_182 %>%
-  group_by(COG20_Uniq) %>%
-  summarise(Genomes182_FH = mean(functional_homogeneity_index),
-            Genomes182_GH = mean(geometric_homogeneity_index)) %>%
-  ungroup() %>%
-  rename(COG = COG20_Uniq)
-gc_91181 <- gc %>%
-  filter(num_genomes_gene_cluster_has_hits <= 181 & num_genomes_gene_cluster_has_hits >= 91)
-cog_df_91181 <- gc_91181 %>%
-  group_by(COG20_Uniq) %>%
-  summarise(Genomes91181_FH = mean(functional_homogeneity_index),
-            Genomes91181_GH = mean(geometric_homogeneity_index)) %>%
-  ungroup() %>%
-  rename(COG = COG20_Uniq)
-gc_290 <- gc %>%
-  filter(num_genomes_gene_cluster_has_hits <= 90 & num_genomes_gene_cluster_has_hits >= 2)
-cog_df_290 <- gc_290 %>%
-  group_by(COG20_Uniq) %>%
-  summarise(Genomes290_FH = mean(functional_homogeneity_index),
-            Genomes290_GH = mean(geometric_homogeneity_index)) %>%
-  ungroup() %>%
-  rename(COG = COG20_Uniq)
-cog_comb <- cog_df_all %>%
-  left_join(., cog_df_182, by = c("COG")) %>%
-  left_join(., cog_df_91181, by = c("COG")) %>%
-  left_join(., cog_df_290, by = c("COG")) %>%
-  column_to_rownames(var = "COG") %>%
-  dplyr::select(All_FH, Genomes182_FH, Genomes91181_FH, Genomes290_FH,
-                All_GH, Genomes182_GH, Genomes91181_GH, Genomes290_GH)
-colSums(cog_comb, na.rm = T)
-min(cog_comb, na.rm = T)
-max(cog_comb, na.rm = T)
-ann_cols <- data.frame(row.names = colnames(cog_comb),
-                       "Index" = c(rep("Functional", 4),
-                                   rep("Geometric", 4)))
-ann_colors <- list(Index = c(Functional = "#F8766D",
-                             Geometric = "#619CFF"))
-pheatmap(cog_comb,
-         legend = T,
-         main = "               Gene Clusters Homogeneity by COG",
-         cluster_rows = F,
-         cluster_cols = F,
-         gaps_col = 4,
-         labels_col = c("All (n = 50945)",
-                        "In 182 genomes (n = 1505)",
-                        "In 91 to 181 genomes (n = 4943)",
-                        "In 2 to 90 genomes (n = 31711)",
-                        "All (n = 50945)",
-                        "In 182 genomes (n = 1505)",
-                        "In 91 to 181 genomes (n = 4943)",
-                        "In 2 to 90 genomes (n = 31711)"),
-         annotation_col = ann_cols,
-         annotation_colors = ann_colors,
-         angle_col = 315,
-         display_numbers = T,
-         number_format = "%.3f",
-         number_color = "black",
-         fontsize_number = 6,
-         border_color = "white",
-         filename = "InitialFigs/Brady182_GeneClusters_Homogeneity.png",
-         width = 8,
-         height = 6)
-dev.off()
-dev.set(dev.next())
-dev.set(dev.next())
-
-
-
-#### 13. Brady 181 ####
-# Pangenomics of the 181 detected genomes
 #### _ANI ####
 # Want to quickly report the range of ANI among these 181
 ani_181 <- read.delim("data/ANI_ani_181.txt") %>%
@@ -8434,11 +3406,34 @@ range(ani_181[ani_181 < 1]) # 0.795487 to 0.999997
 
 
 
-#### _KO ####
-ko <- read.delim("data/KO-PRESENCE-ABSENCE_181.txt", quote = "") # 3567 KOs
-brady_mat <- ko %>%
-  dplyr::select(-key) %>%
-  column_to_rownames(var = "KOfam") %>%
+#### _KO new ####
+# In order to get KO IDs, had to do individually with anvi-export-functions
+# Note: This yields more KOs than the bulk way!
+setwd("data/KO_tables")
+# Import them all as a list
+ko_list <- list()
+ko_files <- list.files()
+strainIDs <- substr(ko_files, start = 1, stop = nchar(ko_files) - 4)
+for (i in 1:181) {
+  ko_list[[i]] <- read.delim(ko_files[i], quote = "") %>%
+    group_by(accession) %>%
+    slice_head(n = 1) %>%
+    ungroup() %>%
+    mutate(presence = 1) %>%
+    dplyr::select(accession, presence) %>%
+    set_names(c("KO", strainIDs[i]))
+}
+# Merge them all
+kos_merged <- ko_list[[1]]
+for (i in 2:181) {
+  kos_merged <- kos_merged %>%
+    full_join(., ko_list[[i]], by = "KO")
+}
+kos_merged[is.na(kos_merged)] <- 0
+setwd("~/Documents/GitHub/AussieStrains/")
+
+brady_mat <- kos_merged %>%
+  column_to_rownames(var = "KO") %>%
   set_names(gsub("Brady_", "", names(.))) %>%
   set_names(ifelse(grepl("GCA", names(.)) == TRUE,
                    gsub("_1", "\\.1", names(.)),
@@ -8451,137 +3446,136 @@ sum(names(brady_mat) %in% brady181_tree$tip.label)
 k181 <- brady_mat %>%
   mutate(sum = rowSums(.)) %>%
   filter(sum == 181) %>%
-  select(-sum) # 1060
+  select(-sum) # 1168
 k180 <- brady_mat %>%
   mutate(sum = rowSums(.)) %>%
   filter(sum == 180) %>%
-  select(-sum) # 217
+  select(-sum) # 240
 k1 <- brady_mat %>%
   mutate(sum = rowSums(.)) %>%
   filter(sum == 1) %>%
-  select(-sum) # 269
+  select(-sum) # 311
 
-# Searching "nodulation" in KEGG yields:
-# K12546 nodO; putative nodulation protein
+## For heatmap, use the Tao et al. 2021 nod and nif genes. nodABCIJ and nifBDEHKN.
+## And Chris Greening energy acquisition strategies (Bay et al. 2021 genes; see Greening section)
 # K14658 nodA; nodulation protein A [EC:2.3.1.-]
-# K14660 nodE; nodulation protein E [EC:2.3.1.-]
-# K14661 nodF; nodulation protein F [EC:2.3.1.-]
-# K27744 NSP1; protein nodulation signaling pathway 1
-# K27745 NSP2; protein nodulation signaling pathway 2
-# But only A and F were found in the Brady (F only once though)
-
-# Plus these don't have nod or nodulation in the name
 # K14659 nodB; chitooligosaccharide deacetylase [EC:3.5.1.-]
 # K14666 nodC; N-acetylglucosaminyltransferase [EC:2.4.1.-]
-# K14657 nodD; LysR family transcriptional regulator, nod-box dependent transcriptional activator
-# All 3 of these present!
-
-# Plus Tao et al. 2021 mentions nodI and nodJ. They report nodABCIJ and nifBDEHKN.
 # K09695 nodI; lipooligosaccharide transport system ATP-binding protein
 # K09694 nodJ; lipooligosaccharide transport system permease protein
 
-# Add those, and this needs to be Figure S7
+# K02585 nifB; nitrogen fixation protein NifB
+# K02586 nifD; nitrogenase molybdenum-iron protein alpha chain [EC:1.18.6.1]
+# K02587 nifE; nitrogenase molybdenum-cofactor synthesis protein NifE
+# K02588 nifH; nitrogenase iron protein NifH
+# K02591 nifK; nitrogenase molybdenum-iron protein beta chain [EC:1.18.6.1]
+# K02592 nifN; nitrogenase molybdenum-iron protein NifN
+
+# Plus photosynthesis genes
+# K13991 puhA; photosynthetic reaction center H subunit
+# K08929 pufM; photosynthetic reaction center M subunit
+# K08928 pufL; photosynthetic reaction center L subunit
+
+# Plus trace gas metabolism genes (CO, CH4, H2 (nope))
+# K03520 coxL, cutL; aerobic carbon-monoxide dehydrogenase large subunit [EC:1.2.5.3]
+# K10944 pmoA-amoA; methane/ammonia monooxygenase subunit A [EC:1.14.18.3 1.14.99.39]
+greening <- read_xlsx("data/GreeningGenes.xlsx") %>%
+  filter(KO %in% kos_merged$KO)
+missing <- read_xlsx("data/GreeningGenes.xlsx") %>%
+  filter(KO %notin% kos_merged$KO)
+# # K00192 cdhA; anaerobic carbon-monoxide dehydrogenase, CODH/ACS complex subunit alpha [EC:1.2.7.4] is missing
+# All of the hydrogenases are missing
+# Formate dehydrogenase missing
+# K00093 mdh; methanol dehydrogenase [EC:1.1.1.244] is missing
+
+# Methylotrophy
+# K23995 xoxF; lanthanide-dependent methanol dehydrogenase [EC:1.1.2.10] (Bao et al. 2014)
+
+# Denitrification suite (own pathway, but also trace gas)
+# And remember, can be complete or partial (see Shan et al. 2021)
+# K00370 narG, narZ, nxrA; nitrate reductase / nitrite oxidoreductase, alpha subunit [EC:1.7.5.1 1.7.99.-]
+# K02567 napA; nitrate reductase (cytochrome) [EC:1.9.6.1]
+# K00368 nirK; nitrite reductase (NO-forming) [EC:1.7.2.1]
+# K15864 nirS; nitrite reductase (NO-forming) / hydroxylamine reductase [EC:1.7.2.1 1.7.99.1]
+# K03385 nrfA; nitrite reductase (cytochrome c-552) [EC:1.7.2.2] (missing)
+# K04561 norB; nitric oxide reductase subunit B [EC:1.7.2.5]
+# K00376 nosZ; nitrous-oxide reductase [EC:1.7.2.4]
+
 brady_mat_func <- brady_mat %>%
-  filter(grepl(ignore.case = F, "chitooligosaccharide deacetylase|N-acetylglucosaminyltransferase|LysR family transcriptional regulator, nod-box dependent transcriptional activator|nodulation|Nif|photosynthetic", rownames(.))) %>%
+  filter(row.names(.) %in% c("K02111", "K02274", "K00404", "K02297", "K00425", "K00335", "K00239",
+                             "K14658", "K14659", "K14666", "K09695", "K09694",
+                             "K02585", "K02586", "K02587", "K02588", "K02591", "K02592",
+                             "K00370", "K02567", "K00368", "K15864", "K04561", "K00376",
+                             "K03520", "K10944", "K23995", 
+                             "K17218", "K17230", "K17224", 
+                             "K01601",
+                             "K13991", "K08929", "K08928")) %>%
   t() %>%
-  as.data.frame()
-brady_func <- brady_mat_func %>%
-  mutate(Nod = rowSums(brady_mat_func[, c(5, 3, 6, 2, 18)])) %>%
-  mutate(Nfix = rowSums(brady_mat_func[, c(1, 4, 7:14)])) %>%
-  mutate(Photo = rowSums(brady_mat_func[, 15:17])) %>%
-  rownames_to_column(var = "GenomeID") %>%
-  dplyr::select(GenomeID, Nod, Nfix, Photo)
-sum(brady_func$Nod > 0) # 175
-sum(brady_func$Nfix > 0) # 146
-sum(brady_func$Photo > 0) # 5
+  as.data.frame() %>%
+  dplyr::select(c("K02111", "K02274", "K00404", "K02297", "K00425", "K00335", "K00239",
+                  "K14658", "K14659", "K14666", "K09695", "K09694",
+                  "K02585", "K02586", "K02587", "K02588", "K02591", "K02592",
+                  "K00370", "K02567", "K00368", "K15864", "K04561", "K00376",
+                  "K03520", "K10944", "K23995", 
+                  "K17218", "K17230", "K17224", 
+                  "K01601",
+                  "K13991", "K08929", "K08928")) %>%
+  set_names(c("atpA", "coxA", "ccoN", "cyoA", "cydA", "nuoF", "sdhA",
+              "nodA", "nodB", "nodC", "nodI", "nodJ", 
+              "nifB", "nifD", "nifE", "nifH", "nifK", "nifN",
+              "narG", "napA", "nirK", "nirS", "norB", "nosZ",
+              "coxL", "pmoA-amoA", "xoxF",
+              "sqr", "fccA", "soxB", 
+              "rbcL",
+              "puhA", "pufM", "pufL"))
 
-brady_mat_func <- brady_mat_func %>%
-  dplyr::select(5, 3, 6, 2, 18,
-                1, 4, 7:14,
-                15:17)
-names(brady_mat_func)[1:5] <- c("nodA", "nodB", "nodC", "nodD", "nodF")
-names(brady_mat_func)[9:10] <- c("nitrogenase Mo-Fe protein NifN",
-                                 "nitrogenase Mo-cofactor synthesis protein NifE")
+# Run on an old brady_mat_func
+# brady_func <- brady_mat_func %>%
+#   mutate(Nod = rowSums(brady_mat_func[, c(1:5)])) %>%
+#   mutate(Nfix = rowSums(brady_mat_func[, c(6:11)])) %>%
+#   mutate(Photo = rowSums(brady_mat_func[, 12:14])) %>%
+#   mutate(CO = brady_mat_func[, 15]) %>%
+#   mutate(CH4 = brady_mat_func[, 16]) %>%
+#   mutate(Meth = brady_mat_func[, 17]) %>%
+#   mutate(DNF = rowSums(brady_mat_func[, 18:23])) %>%
+#   mutate(DNF1 = rowSums(brady_mat_func[, c(19,20,22,23)])) %>%
+#   rownames_to_column(var = "GenomeID") %>%
+#   dplyr::select(GenomeID, Nod, Nfix, Photo, CO, CH4, Meth, DNF, DNF1)
+# 
+# # Groups
+# sum(brady_func$Nod >= 4) # 143
+# sum(brady_func$Nfix >= 5) # 145
+# sum(brady_func$Photo >= 2) # 5
+# sum(brady_func$CO > 0) # 181
+# sum(brady_func$CH4 > 0) # 4
+# sum(brady_func$Meth > 0) # 177
+# sum(brady_func$DNF >= 4) # 13
+# sum(brady_func$DNF1 == 4) # 11 with napA + nirK + norB + nosZ complete DNF!
 
-sum(brady_mat_func$`nitrogen fixation protein NifZ`) # 145
+# Individual
 sum(brady_mat_func$nodA) # 143
-sum(brady_mat_func$nodF) # 1
+sum(brady_mat_func$nifH) # 143
+sum(brady_mat_func$puhA) # 5
+sum(brady_mat_func$coxL) # 181
+sum(brady_mat_func$`pmoA-amoA`) # 4
+sum(brady_mat_func$xoxF) # 177
+sum(brady_mat_func$narG) # 3
+sum(brady_mat_func$napA) # 49
+sum(brady_mat_func$nirK) # 142
+sum(brady_mat_func$nirS) # 2
+sum(brady_mat_func$norB) # 38
+sum(brady_mat_func$nosZ) # 15
 
 ann_cols <- data.frame(row.names = colnames(brady_mat_func),
-                       Function = c(rep("Nodulation", 5),
-                                    rep("N fixation", 10),
-                                    rep("Photosynthesis", 3)))
-ann_rows <- data.frame(row.names = rownames(sylph_strains_331)) %>%
-  mutate(`Genome Type` = row_dat$Type,
-         `Genome Source` = row_dat$Source)
-ann_colors <- list(`Genome Type` = c("Commercial" = "#EE3377",
-                                     "GTDB Isolate" = "#66CCEE",
-                                     "GTDB MAG" = "#332288",
-                                     "StrainFinder" = "#EE7733",
-                                     "StrainFinder Ref" = "yellow"),
-                   `Genome Source` = c("Plant" = "#44AA99",
-                                       "Soil" = "#DDCC77",
-                                       "Other/NA" = "#DDDDDD"),
-                   `Function` = c("Nodulation" = "#BBCCEE",
-                                  "N fixation" = "#FFCCCC",
-                                  "Photosynthesis" = "#CCDDAA"))
-
-pheatmap(brady_mat_func,
-         color = c("grey80", "grey30"),
-         legend = T,
-         legend_breaks = c(0, 1),
-         legend_labels = c("0  ", "1  "),
-         cluster_rows = F,
-         cluster_cols = F,
-         annotation_row = ann_rows,
-         annotation_col = ann_cols,
-         annotation_colors = ann_colors,
-         angle_col = 315,
-         fontsize_row = 3,
-         fontsize_col = 5,
-         fontsize = 6,
-         border_color = "white",
-         #gaps_col = c(1, 9),
-         gaps_col = c(5, 15),
-         labels_row = rev(tree_data_maxmin$SpeciesShort),
-         filename = "FinalFigs/FigureS7.png",
-         #filename = "InitialFigs/Brady181_func_wNod.png",
-         width = 4,
-         height = 9)
-dev.off()
-dev.set(dev.next())
-dev.set(dev.next())
-
-# Remake using just the Tao 2021 genes plus photosynthesis. nifBDEHKN
-brady_mat_func2 <- brady_mat %>%
-  filter(grepl(ignore.case = F, "nodulation protein A|chitooligosaccharide deacetylase|N-acetylglucosaminyltransferase|lipooligosaccharide transport system ATP-binding protein|lipooligosaccharide transport system permease protein|nitrogen fixation protein NifB|nitrogenase molybdenum-iron protein alpha chain|nitrogenase molybdenum-cofactor synthesis protein NifE|nitrogenase iron protein NifH|nitrogenase molybdenum-iron protein beta chain|nitrogenase molybdenum-iron protein NifN|photosynthe", rownames(.))) %>%
-  t() %>%
-  as.data.frame()
-names(brady_mat_func2)
-brady_func <- brady_mat_func2 %>%
-  mutate(Nod = rowSums(brady_mat_func2[, c(3, 2, 4, 1, 5)])) %>%
-  mutate(Nfix = rowSums(brady_mat_func2[, c(9, 7, 8, 11, 10, 6)])) %>%
-  mutate(Photo = rowSums(brady_mat_func2[, 12:14])) %>%
-  rownames_to_column(var = "GenomeID") %>%
-  dplyr::select(GenomeID, Nod, Nfix, Photo)
-sum(brady_func$Nod >= 4) # 143
-sum(brady_func$Nfix >= 5) # 145
-sum(brady_func$Photo >= 2) # 5
-
-brady_mat_func2 <- brady_mat_func2 %>%
-  dplyr::select(3, 2, 4, 1, 5,
-                9, 7, 8, 11, 10, 6,
-                12:14)
-names(brady_mat_func2)[1:5] <- c("nodA", "nodB", "nodC", "nodI", "nodJ")
-names(brady_mat_func2)[6:11] <- c("nifB", "nifD", "nifE", "nifH", "nifK", "nifN")
-
-sum(brady_mat_func2$nifH) # 143
-sum(brady_mat_func2$nodA) # 143
-
-ann_cols <- data.frame(row.names = colnames(brady_mat_func2),
-                       Function = c(rep("Nodulation", 5),
+                       Function = c(rep("Aerobic respiration", 7),
+                                    rep("Nodulation", 5),
                                     rep("N fixation", 6),
+                                    rep("Denitrification", 6),
+                                    rep("C1 metabolism", 3),
+                                    rep("Sulfur metabolism", 3),
+                                    "Calvin-Benson cycle",
                                     rep("Photosynthesis", 3)))
+sum(rownames(brady_mat_func) != rownames(sylph_strains_331))
 ann_rows <- data.frame(row.names = rownames(sylph_strains_331)) %>%
   mutate(`Genome Type` = row_dat$Type,
          `Genome Source` = row_dat$Source)
@@ -8593,10 +3587,18 @@ ann_colors <- list(`Genome Type` = c("Commercial" = "#EE3377",
                    `Genome Source` = c("Plant" = "#44AA99",
                                        "Soil" = "#DDCC77",
                                        "Other/NA" = "#DDDDDD"),
-                   `Function` = c("Nodulation" = "#BBCCEE",
-                                  "N fixation" = "#FFCCCC",
-                                  "Photosynthesis" = "#CCDDAA"))
-pheatmap(brady_mat_func2,
+                   `Function` = c("Aerobic respiration" = "#A6CEE3",
+                                  "Nodulation" = "#1F78B4",
+                                  "N fixation" = "#FB9A99",
+                                  "Denitrification" = "#E31A1C",
+                                  "C1 metabolism" = "#CAB2D6",
+                                  "Sulfur metabolism" = "#6A3D9A",
+                                  "Calvin-Benson cycle" = "#B15928",
+                                  "Photosynthesis" = "#B2DF8A"
+                                  ))
+tree_data_maxmin <- tree_data_maxmin %>%
+  mutate(SpeciesShort = gsub(" \\(Reference\\)", "", SpeciesShort))
+hm <- pheatmap(brady_mat_func,
          color = c("grey80", "grey30"),
          legend = T,
          legend_breaks = c(0, 1),
@@ -8611,96 +3613,134 @@ pheatmap(brady_mat_func2,
          fontsize_col = 5,
          fontsize = 6,
          border_color = "white",
-         gaps_col = c(5, 11),
-         labels_row = rev(tree_data_maxmin$SpeciesShort),
-         filename = "FinalFigs/FigureS7.png",
-         width = 4,
-         height = 9)
-dev.off()
-dev.set(dev.next())
-dev.set(dev.next())
+         gaps_col = c(7, 12, 18, 24, 27, 30, 31),
+         labels_row = rev(tree_data_maxmin$SpeciesShort))
+save_pheatmap_pdf(hm, "FinalFigs/Figure5forPPT.pdf")
 
 
 
-# Plot number of KOs shared by each number of genomes
-int_info_all <- data.frame(Genomes = seq(1:181)) %>%
-  mutate(Genomes = factor(Genomes,
-                          levels = seq(1:181))) %>%
-  mutate(KOs = "NA")
-for (i in 1:181) {
-  k <- brady_mat %>%
-    mutate(sum = rowSums(.)) %>%
-    filter(sum == i) %>%
-    select(-sum)
-  int_info_all$KOs[i] <- nrow(k)
-}
-int_info_all$KOs <- as.integer(int_info_all$KOs)
-pdf("InitialFigs/Genes_SharedKOs_181.pdf", width = 7, height = 4)
-ggplot(int_info_all, aes(Genomes, KOs)) +
-  geom_bar(stat = "identity") +
-  #geom_text(aes(Genomes, KOs + 20, label = KOs), size = 2) +
-  labs(x = "Number of genomes (1 to 181)",
-       y = "Number of shared KOs") +
-  scale_y_continuous(expand = c(0.01, 0.01)) +
-  scale_x_discrete(expand = c(0.01, 0.5)) +
-  theme_bw() +
-  theme(axis.text.x = element_blank(),
-        axis.ticks.x = element_blank(),
-        #axis.text.x = element_text(size = 6, angle = 90, hjust = 1, vjust = 0.5),
-        panel.grid.major.x = element_blank())
-dev.off()
+#### __Greening ####
+# See functions in Figure 1 Bay et al. 2021 Nature Microbiology
+# K02111 ATPF1A, atpA; F-type H+/Na+-transporting ATPase subunit alpha [EC:7.1.2.2 7.2.2.1]
+# K02274 coxA, ctaD; cytochrome c oxidase subunit I [EC:7.1.1.9]
+# K00404 ccoN; cytochrome c oxidase cbb3-type subunit I [EC:7.1.1.9]
+# K02297 cyoA; cytochrome o ubiquinol oxidase subunit II [EC:7.1.1.3]
+# K00425 cydA; cytochrome bd ubiquinol oxidase subunit I [EC:7.1.1.7]
+# K00335 nuoF; NADH-quinone oxidoreductase subunit F [EC:7.1.1.2]
+# K00351 nqrF; Na+-transporting NADH:ubiquinone oxidoreductase subunit F [EC:7.2.1.1]
+# K00239 sdhA, frdA; succinate dehydrogenase flavoprotein subunit [EC:1.3.5.1]
+# K18556 frdA; NADH-dependent fumarate reductase subunit A [EC:1.3.1.6]
+# K05299 fdhA; formate dehydrogenase (NADP+) alpha subunit [EC:1.17.1.10]
+# K10944 pmoA-amoA; methane/ammonia monooxygenase subunit A [EC:1.14.18.3 1.14.99.39]
+# K16157 mmoX; methane monooxygenase component A alpha chain [EC:1.14.13.25]
+# K03520 coxL, cutL; aerobic carbon-monoxide dehydrogenase large subunit [EC:1.2.5.3]
+# K18008 hydA; [NiFe] hydrogenase small subunit [EC:1.12.2.1]
+# K17218 sqr; sulfide:quinone oxidoreductase [EC:1.8.5.4]
+# K17230 fccA; cytochrome subunit of sulfide dehydrogenase
+# K17224 soxB; S-sulfosulfanyl-L-cysteine sulfohydrolase [EC:3.1.6.20]
+# K11180 dsrA; dissimilatory sulfite reductase alpha subunit [EC:1.8.1.22]
+# K16950 asrA; anaerobic sulfite reductase subunit A
+# Skip NxrA
+# K20932 K20932; hydrazine synthase subunit [EC:1.7.2.7]
+# K00370 narG, narZ, nxrA; nitrate reductase / nitrite oxidoreductase, alpha subunit [EC:1.7.5.1 1.7.99.-]
+# K02567 napA; nitrate reductase (cytochrome) [EC:1.9.6.1]
+# K00368 nirK; nitrite reductase (NO-forming) [EC:1.7.2.1]
+# K15864 nirS; nitrite reductase (NO-forming) / hydroxylamine reductase [EC:1.7.2.1 1.7.99.1]
+# K03385 nrfA; nitrite reductase (cytochrome c-552) [EC:1.7.2.2]
+# K00376 nosZ; nitrous-oxide reductase [EC:1.7.2.4]
+# K02588 nifH; nitrogenase iron protein NifH
+# K14138 acsB; acetyl-CoA synthase [EC:2.3.1.169]
+# K01601 rbcL, cbbL; ribulose-bisphosphate carboxylase large chain [EC:4.1.1.39]
+# K15231 aclB; ATP-citrate lyase beta-subunit [EC:2.3.3.8]
+# K14468 mcr; malonyl-CoA reductase / 3-hydroxypropionate dehydrogenase (NADP+) [EC:1.2.1.75 1.1.1.298]
+# K14534 abfD; 4-hydroxybutyryl-CoA dehydratase / vinylacetyl-CoA-Delta-isomerase [EC:4.2.1.120 5.3.3.3]
+# K18593 E6.2.1.56; 4-hydroxybutyrate---CoA ligase (ADP-forming) [EC:6.2.1.56]
+# K02689 psaA; photosystem I P700 chlorophyll a apoprotein A1 [EC:1.97.1.12]
+# K02703 psbA; photosystem II P680 reaction center D1 protein [EC:1.10.3.9]
 
+# Not mentioned but check
+# K10535 hao; hydroxylamine dehydrogenase [EC:1.7.2.6] (not present. Not AOB)
+# Instead of the Bay photosystems, use the others.
+bay <- data.frame("KO" = c("K02111", "K02274", "K00404", "K02297", "K00425", "K00335", 
+                           "K00351", "K00239", "K18556", "K05299", "K10944", "K16157", "K03520", 
+                           "K18008", "K17218", "K17230", "K17224", "K11180", "K16950", 
+                           "K20932", "K00370", "K02567", "K00368", "K15864", 
+                           "K03385", "K00376", "K02588", "K14138", "K01601", "K15231", 
+                           "K14468", "K14534", "K18593", "K02689", "K02703", "K13991"),
+                  "Name" = c("atpA", "coxA", "ccoN", "cyoA", "cydA", "nuoF", "nqrF",
+                             "sdhA", "frdA", "fdhA", "pmoA-amoA", "mmoX", "coxL", "hydA",
+                             "sqr", "fccA", "soxB", "dsrA", "asrA", "hzsA", "narG", 
+                             "napA", "nirK", "nirS", "nrfA", "nosZ", "nifH", "acsB",
+                             "rbcL", "aclB", "mcr", "abfD", "hbsT", "psaA", "psbA", "puhA"),
+                  "Category" = c("Oxidative phosphorylation", "Aerobic respiration",
+                                 "Aerobic respiration", "Aerobic respiration", 
+                                 "Aerobic respiration", "NADH oxidation", "NADH oxidation",
+                                 "Succinate oxidation", "Fumarate reduction",
+                                 "Formate oxidation", "CH4 oxidation", "CH4 oxidation",
+                                 "CO oxidation", "H2 oxidation", "Sulfide oxidation",
+                                 "Sulfide oxidation", "Thiosulfate oxidation", 
+                                 "Sulfide ox./Sulfite red.", "Sulfide ox./Sulfite red.", 
+                                 "Anammox", "Nitrate reduction",
+                                 "Nitrate reduction",
+                                 "Nitrite reduction to NO",
+                                 "Nitrite reduction to NO", "Nitrite reduction to NH3",
+                                 "N2O reduction", "N fixation", "Wood-Ljungdahl Pathway",
+                                 "Calvin-Benson cycle", "Reductive TCA cycle",
+                                 "3-hydroxypropionate cycle", "4-hydroxybutyrate cycles",
+                                 "4-hydroxybutyrate cycles", "Photosystem I", 
+                                 "Photosystem II", "Photosynthesis")) %>%
+  mutate(Presence = ifelse(KO %in% kos_merged$KO, "Yes", "No")) %>%
+  filter(Presence == "Yes")
 
-
-#### _CAZyme ####
-# AA 12 auxiliary activities
-# CB 8 carbohydrate-binding
-# CE 11 carbohydrate esterase
-# GH 87 glycoside hydrolase
-# GT 40 glycosyltransferase
-# PL 15 polysaccharide lyase
-
-cazy <- read.delim("data/CAZy-FREQUENCY_181.txt")
-
-brady_mat <- cazy %>%
-  mutate(CAZyme = gsub(".hmm", "", CAZyme)) %>%
-  mutate(Class = substr(CAZyme, start = 1, stop = 2)) %>%
-  mutate(Class = gsub("AA", "Auxiliary activities", Class)) %>%
-  mutate(Class = gsub("CB", "Carbohydrate-binding", Class)) %>%
-  mutate(Class = gsub("CE", "Carbohydrate esterase", Class)) %>%
-  mutate(Class = gsub("GH", "Glycoside hydrolase", Class)) %>%
-  mutate(Class = gsub("GT", "Glycosyltransferase", Class)) %>%
-  mutate(Class = gsub("PL", "Polysaccharide lyase", Class)) %>%
-  dplyr::select(-key, -CAZyme) %>%
-  group_by(Class) %>%
-  summarise_all(sum) %>%
-  column_to_rownames(var = "Class") %>%
-  set_names(gsub("Brady_", "", names(.))) %>%
-  set_names(ifelse(grepl("GCA", names(.)) == TRUE,
-                   gsub("_1", "\\.1", names(.)),
-                   names(.))) %>%
-  dplyr::select(all_of(get_taxa_name(p)))
-names(brady_mat)
-sum(names(brady_mat) %in% brady181_tree$tip.label)
-brady_mat_cazy <- brady_mat %>%
+brady_mat_func <- brady_mat %>%
+  filter(row.names(.) %in% bay$KO) %>%
   t() %>%
-  as.data.frame()
-pheatmap(brady_mat_cazy,
-         legend = T,
-         scale = "column",
-         cluster_rows = F,
-         cluster_cols = F,
-         angle_col = 315,
-         fontsize_row = 3,
-         fontsize_col = 6,
-         border_color = "white",
-         labels_row = rev(tree_data$Species),
-         filename = "InitialFigs/Brady181_cazy.png",
-         width = 4,
-         height = 10)
-dev.off()
-dev.set(dev.next())
-dev.set(dev.next())
+  as.data.frame() %>%
+  dplyr::select(all_of(bay$KO)) %>%
+  set_names(c(bay$Name))
+
+brady_cat <- data.frame(
+  "Category" = c("Oxidative phosphorylation - AtpA", 
+                 "Aerobic respiration - CoXA, CcoN, CyoA, CydA",
+                 "NADH oxidation - NuoF",
+                 "Succinate oxidation - SdhA",
+                 "Methane oxidation - PmoA",
+                 "Carbon monoxide oxidation - coxL",
+                 "Sulfide oxidation - Sqr, FccA",
+                 "Thiosulfate oxidation - SoxB",
+                 "Nitrate reduction - NarG, NapA",
+                 "Nitrite reduction to nitric oxide - NirS, NirK",
+                 "Nitrous oxide reduction - NosZ",
+                 "Nitrogen fixation - NifBDEHKN",
+                 "Calvin-Benson cycle - RbcL",
+                 "Photosynthesis - PuhA, PufM, PufL"),
+  "GenomeCount" = c(sum(brady_mat_func$atpA),
+                    sum(brady_mat_func$coxA == 1 | brady_mat_func$ccoN == 1 |
+                          brady_mat_func$cyoA == 1 | brady_mat_func$cydA == 1),
+                    sum(brady_mat_func$nuoF),
+                    sum(brady_mat_func$sdhA),
+                    sum(brady_mat_func$`pmoA-amoA`),
+                    sum(brady_mat_func$coxL),
+                    sum(brady_mat_func$sqr == 1 | brady_mat_func$fccA == 1),
+                    sum(brady_mat_func$soxB),
+                    sum(brady_mat_func$narG == 1 | brady_mat_func$napA == 1),
+                    sum(brady_mat_func$nirK == 1 | brady_mat_func$nirS == 1),
+                    sum(brady_mat_func$nosZ),
+                    145,
+                    sum(brady_mat_func$rbcL),
+                    sum(brady_mat_func$puhA))
+  )
+brady_cat$Category <- factor(brady_cat$Category, levels = rev(brady_cat$Category))
+ggplot(brady_cat, aes(Category, GenomeCount)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(Category, GenomeCount + 7, label = GenomeCount), size = 3) +
+  labs(y = "# strains present") +
+  coord_flip() +
+  theme_minimal() +
+  theme(axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 14),
+        axis.text = element_text(size = 12),
+        plot.margin = margin(5,15,5,5))
 
 
 
@@ -8708,6 +3748,7 @@ dev.set(dev.next())
 # From anvio pangenomics analysis
 # Pangenome summary file (anvi-summarize)
 # Note: 79261 gene clusters with 1,416,019 genes
+# Huge file (1.09 Gb), can't put on GitHub. It's on FigShare. 10.6084/m9.figshare.29175329
 gc_all <- read.delim("~/Desktop/Fierer/Strains/Australia/Bradyrhizobium_Pan_gene_clusters_summary_181.txt", quote = "")
 names(gc_all)
 length(unique(gc_all$gene_cluster_id)) # 79261
@@ -8782,28 +3823,28 @@ cog_comb <- cog_df_all %>%
 colSums(cog_comb, na.rm = T)
 min(cog_comb, na.rm = T)
 max(cog_comb, na.rm = T)
-pheatmap(cog_comb,
-         legend = T,
-         legend_breaks = c(0.001261655, 15, 30, 45, 60, 72.41355),
-         legend_labels = c("0", "15", "30", "45", "60", ""),
-         main = "            % Gene Clusters by COG",
-         cluster_rows = F,
-         cluster_cols = F,
-         labels_col = c("All (n = 79261)", 
-                        "In 181 genomes (n = 1935)",
-                        "In 2 to 180 genomes (n = 35541)",
-                        "In 1 genome (n = 41785)"),
-         angle_col = 315,
-         display_numbers = T,
-         number_color = "black",
-         fontsize_number = 10,
-         border_color = "white",
-         filename = "InitialFigs/Brady181_GeneClusters_COGs.png",
-         width = 6,
-         height = 8)
-dev.off()
-dev.set(dev.next())
-dev.set(dev.next())
+# pheatmap(cog_comb,
+#          legend = T,
+#          legend_breaks = c(0.001261655, 15, 30, 45, 60, 72.41355),
+#          legend_labels = c("0", "15", "30", "45", "60", ""),
+#          main = "            % Gene Clusters by COG",
+#          cluster_rows = F,
+#          cluster_cols = F,
+#          labels_col = c("All (n = 79261)", 
+#                         "In 181 genomes (n = 1935)",
+#                         "In 2 to 180 genomes (n = 35541)",
+#                         "In 1 genome (n = 41785)"),
+#          angle_col = 315,
+#          display_numbers = T,
+#          number_color = "black",
+#          fontsize_number = 10,
+#          border_color = "white",
+#          filename = "InitialFigs/Brady181_GeneClusters_COGs.png",
+#          width = 6,
+#          height = 8)
+# dev.off()
+# dev.set(dev.next())
+# dev.set(dev.next())
 
 # Prep data and plot homogeneity by COG
 cog_df_all <- gc %>%
@@ -8859,31 +3900,31 @@ ann_cols <- data.frame(row.names = colnames(cog_comb),
                                    rep("Geometric", 3)))
 ann_colors <- list(Index = c(Functional = "#F8766D",
                              Geometric = "#619CFF"))
-pheatmap(cog_comb,
-         legend = T,
-         cluster_rows = F,
-         cluster_cols = F,
-         gaps_col = 3,
-         labels_col = c("In 181 genomes (n = 1935)",
-                        "In 91 to 180 genomes (n = 4836)",
-                        "In 2 to 90 genomes (n = 30705)",
-                        "In 181 genomes (n = 1935)",
-                        "In 91 to 180 genomes (n = 4836)",
-                        "In 2 to 90 genomes (n = 30705)"),
-         annotation_col = ann_cols,
-         annotation_colors = ann_colors,
-         angle_col = 315,
-         display_numbers = T,
-         number_format = "%.3f",
-         number_color = "black",
-         fontsize_number = 6,
-         border_color = "white",
-         filename = "InitialFigs/Brady181_GeneClusters_Homogeneity.png",
-         width = 8,
-         height = 6)
-dev.off()
-dev.set(dev.next())
-dev.set(dev.next())
+# pheatmap(cog_comb,
+#          legend = T,
+#          cluster_rows = F,
+#          cluster_cols = F,
+#          gaps_col = 3,
+#          labels_col = c("In 181 genomes (n = 1935)",
+#                         "In 91 to 180 genomes (n = 4836)",
+#                         "In 2 to 90 genomes (n = 30705)",
+#                         "In 181 genomes (n = 1935)",
+#                         "In 91 to 180 genomes (n = 4836)",
+#                         "In 2 to 90 genomes (n = 30705)"),
+#          annotation_col = ann_cols,
+#          annotation_colors = ann_colors,
+#          angle_col = 315,
+#          display_numbers = T,
+#          number_format = "%.3f",
+#          number_color = "black",
+#          fontsize_number = 6,
+#          border_color = "white",
+#          filename = "InitialFigs/Brady181_GeneClusters_Homogeneity.png",
+#          width = 8,
+#          height = 6)
+# dev.off()
+# dev.set(dev.next())
+# dev.set(dev.next())
 
 
 
@@ -8891,7 +3932,7 @@ dev.set(dev.next())
 # Which are most variable? P/A or geometric?
 # P/A index - how many genomes?
 # How many total GC per COG class?
-# Make Figure 7
+# Make Figure S11
 
 # First combine the Unknown and Function unknown categories
 gc <- gc %>%
@@ -8985,27 +4026,27 @@ ann_colors <- list(Metric = c(Geometric = "#DDAA33",
                    Genomes = c("181 genomes (n = 1935)" = "#440154FF",
                                "91 to 180 genomes (n = 4836)" = "#21908CFF",
                                "2 to 90 genomes (n = 30705)" = "#FDE725FF"))
-pheatmap(cog_comb,
-         legend = T,
-         cluster_rows = F,
-         cluster_cols = F,
-         gaps_col = c(3, 6),
-         show_colnames = F,
-         annotation_col = ann_cols,
-         annotation_colors = ann_colors,
-         angle_col = 315,
-         display_numbers = cog_comb_num,
-         number_format = "%.2f",
-         number_color = "black",
-         fontsize = 7,
-         fontsize_number = 6,
-         border_color = "white",
-         filename = "FinalFigs/Figure7.png",
-         width = 8,
-         height = 6)
-dev.off()
-dev.set(dev.next())
-dev.set(dev.next())
+# pheatmap(cog_comb,
+#          legend = T,
+#          cluster_rows = F,
+#          cluster_cols = F,
+#          gaps_col = c(3, 6),
+#          show_colnames = F,
+#          annotation_col = ann_cols,
+#          annotation_colors = ann_colors,
+#          angle_col = 315,
+#          display_numbers = cog_comb_num,
+#          number_format = "%.2f",
+#          number_color = "black",
+#          fontsize = 7,
+#          fontsize_number = 6,
+#          border_color = "white",
+#          filename = "InitialFigs/oldFigure7.png",
+#          width = 8,
+#          height = 6)
+# dev.off()
+# dev.set(dev.next())
+# dev.set(dev.next())
 
 # Plot number of GC shared by each number of genomes
 nb.cols <- 24
@@ -9015,7 +4056,7 @@ gc_genomeNum <- gc %>%
   group_by(num_genomes_gene_cluster_has_hits, COG20_Uniq) %>%
   summarise(nGC = n())
 length(unique(gc_genomeNum$num_genomes_gene_cluster_has_hits))
-pdf("InitialFigs/GeneClusters_NumGenomes.pdf", width = 8, height = 6)
+#pdf("InitialFigs/GeneClusters_NumGenomes.pdf", width = 8, height = 6)
 ggplot(gc_genomeNum, aes(num_genomes_gene_cluster_has_hits, nGC, fill = COG20_Uniq)) +
   geom_bar(stat = "identity") +
   labs(x = "Number of genomes (1 to 181)",
@@ -9032,9 +4073,46 @@ ggplot(gc_genomeNum, aes(num_genomes_gene_cluster_has_hits, nGC, fill = COG20_Un
         legend.text = element_text(size = 6),
         #axis.text.x = element_text(size = 6, angle = 90, hjust = 1, vjust = 0.5),
         panel.grid.major.x = element_blank())
+#dev.off()
+
+# Don't split by COG. Log10 y.
+gc_genomeNum <- gc %>%
+  dplyr::select(gene_cluster_id, num_genomes_gene_cluster_has_hits) %>%
+  group_by(num_genomes_gene_cluster_has_hits) %>%
+  summarise(nGC = n()) %>%
+  mutate(Type = ifelse(num_genomes_gene_cluster_has_hits == 1, "Singleton",
+                       ifelse(num_genomes_gene_cluster_has_hits == 181, "Core", "Accessory"))) %>%
+  mutate(Type = factor(Type, levels = c("Singleton", "Accessory", "Core")))
+s10 <- ggplot(gc_genomeNum, aes(num_genomes_gene_cluster_has_hits, log10(nGC), fill = Type)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Number of strains (1 to 181)",
+       y = "log number of gene clusters",
+       fill = NULL) +
+  scale_fill_manual(values = c("red", "grey50", "blue")) +
+  scale_y_continuous(expand = c(0.01, 0.01)) +
+  scale_x_discrete(expand = c(0.01, 0.5)) +
+  guides(fill = guide_legend(ncol = 1)) +
+  theme_minimal() +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        legend.position = "inside",
+        legend.position.inside = c(1, 1),
+        legend.justification = c(1, 1),
+        #axis.text.x = element_text(size = 6, angle = 90, hjust = 1, vjust = 0.5),
+        panel.grid = element_blank(),
+        legend.margin = margin(0,0,0,-10))
+pdf("FinalFigs/FigureS10.pdf", width = 8, height = 6)
+s10
+dev.off()
+png("FinalFigs/FigureS10.png", width = 8, height = 6, units = "in", res = 300)
+s10
 dev.off()
 
 # Now plot proportions
+gc_genomeNum <- gc %>%
+  dplyr::select(gene_cluster_id, num_genomes_gene_cluster_has_hits, COG20_Uniq) %>%
+  group_by(num_genomes_gene_cluster_has_hits, COG20_Uniq) %>%
+  summarise(nGC = n())
 gcSum_genomeNum <- gc_genomeNum %>%
   group_by(num_genomes_gene_cluster_has_hits) %>%
   summarise(sum = sum(nGC)) %>%
@@ -9042,7 +4120,7 @@ gcSum_genomeNum <- gc_genomeNum %>%
 gcProp_genomeNum <- gc_genomeNum %>%
   left_join(., gcSum_genomeNum, by = "num_genomes_gene_cluster_has_hits") %>%
   mutate(Prop = nGC/sum)
-pdf("InitialFigs/GeneClustersProp_NumGenomes.pdf", width = 8, height = 6)
+#pdf("InitialFigs/GeneClustersProp_NumGenomes.pdf", width = 8, height = 6)
 ggplot(gcProp_genomeNum, aes(num_genomes_gene_cluster_has_hits, Prop, fill = COG20_Uniq)) +
   geom_bar(stat = "identity") +
   labs(x = "Number of genomes (1 to 181)",
@@ -9060,10 +4138,10 @@ ggplot(gcProp_genomeNum, aes(num_genomes_gene_cluster_has_hits, Prop, fill = COG
         legend.margin = margin(0,0,0,-5, "pt"),
         #axis.text.x = element_text(size = 6, angle = 90, hjust = 1, vjust = 0.5),
         panel.grid.major.x = element_blank())
-dev.off()
+#dev.off()
 
 # Or plot as panels to see the distribution of each one
-pdf("InitialFigs/GeneClustersProp_NumGenomes_Facet.pdf", width = 9, height = 6)
+#pdf("InitialFigs/GeneClustersProp_NumGenomes_Facet.pdf", width = 9, height = 6)
 ggplot(gcProp_genomeNum, aes(num_genomes_gene_cluster_has_hits, Prop, fill = COG20_Uniq)) +
   geom_bar(stat = "identity") +
   labs(x = "Number of genomes (1 to 181)",
@@ -9080,7 +4158,7 @@ ggplot(gcProp_genomeNum, aes(num_genomes_gene_cluster_has_hits, Prop, fill = COG
         legend.position = "none",
         panel.grid.major.x = element_blank(),
         strip.text = element_text(size = 4))
-dev.off()
+#dev.off()
 
 # Or plot as heatmap
 gcProp_genomeNum_wide <- gcProp_genomeNum %>%
@@ -9098,7 +4176,6 @@ pheatmap(gcProp_genomeNum_wide,
                         length.out = 100)),
          cluster_rows = T,
          cluster_cols = F,
-         #scale = "column",
          fontsize = 8,
          show_colnames = F)
 gcProp_genomeNum_wide <- gcProp_genomeNum %>%
@@ -9114,6 +4191,8 @@ pheatmap(gcProp_genomeNum_wide,
          scale = "row",
          fontsize = 8,
          show_colnames = F)
+
+
 
 #### __Per COG ####
 # Need to normalize by the total number of GC in each COG
@@ -9433,7 +4512,7 @@ cogProp <- rbind(cogB, cogC, cogD, cogE, cogF, cogG, cogH, cogI, cogJ, cogK,
 length(unique(cogProp$COG))
 nb.cols <- 24
 mycolors <- colorRampPalette(brewer.pal(12, "Paired"))(nb.cols)
-pdf("InitialFigs/GeneClustersPropCOG.pdf", width = 8, height = 6)
+#pdf("InitialFigs/GeneClustersPropCOG.pdf", width = 8, height = 6)
 ggplot(cogProp, aes(num_genomes_gene_cluster_has_hits, Prop)) +
   geom_bar(stat = "identity", colour = "black", fill = "black") +
   labs(x = "Number of genomes (1 to 181)",
@@ -9448,7 +4527,7 @@ ggplot(cogProp, aes(num_genomes_gene_cluster_has_hits, Prop)) +
         legend.position = "none",
         panel.grid.major.x = element_blank(),
         strip.text = element_text(size = 4))
-dev.off()
+#dev.off()
 
 cogProp_sing_core <- cogProp %>%
   filter(num_genomes_gene_cluster_has_hits == 1 | num_genomes_gene_cluster_has_hits == 181) %>%
@@ -9458,7 +4537,7 @@ cogProp_sing_core <- cogProp %>%
   add_row(COG = "Chromatin structure and dynamics", Prop = 0, Type = "Core") %>%
   add_row(COG = "Cytoskeleton", Prop = 0, Type = "Core") %>%
   mutate(Type = factor(Type, levels = c("Singleton", "Core")))
-pdf("InitialFigs/GeneClustersPropCOG_SingCore.pdf", width = 8, height = 6)
+#pdf("InitialFigs/GeneClustersPropCOG_SingCore.pdf", width = 8, height = 6)
 ggplot(cogProp_sing_core, aes(COG, Prop, fill = Type)) +
   geom_bar(stat = "identity", position = "dodge") +
   labs(x = "COG Category",
@@ -9475,7 +4554,7 @@ ggplot(cogProp_sing_core, aes(COG, Prop, fill = Type)) +
         axis.title.y = element_text(size = 10),
         axis.title.x = element_blank(),
         plot.margin = margin(5, 5, 5, 60, "pt"))
-dev.off()
+#dev.off()
 
 cogProp_Type <- cogProp %>%
   mutate(Type = ifelse(num_genomes_gene_cluster_has_hits <= 9,
@@ -9536,7 +4615,7 @@ ggplot(cogTot, aes(COG, nGC)) +
 
 
 
-#### ___Figure 7 ####
+#### ___Figure S11 ####
 # For each COG, get mean Geometric Homogeneity, mean prop. genomes present, mean prop of GC
 cogB <- gc %>%
   filter(grepl("B", COG20_CATEGORY_ACC)) %>%
@@ -9802,13 +4881,15 @@ pheatmap(cogProp_Type_wide,
          number_color = "black",
          fontsize = 7,
          fontsize_number = 6,
-         border_color = "white",
-         filename = "FinalFigs/Figure7.png",
-         width = 8,
-         height = 6)
-dev.off()
-dev.set(dev.next())
-dev.set(dev.next())
+         border_color = "white"
+         # ,
+         # filename = "FinalFigs/oldFigure7.png",
+         # width = 8,
+         # height = 6
+         )
+# dev.off()
+# dev.set(dev.next())
+# dev.set(dev.next())
 
 # Or facet wrapped barplot instead of heatmap
 cogProp_Type_long <- cogProp_Type %>%
@@ -9828,7 +4909,7 @@ num_lab2 <- num_lab %>%
   filter(COG %notin% c("Chromatin structure and dynamics",
                        "Cytoskeleton")) %>%
   droplevels()
-fig7 <- ggplot() +
+figS11 <- ggplot() +
   geom_bar(data = subset(cogProp_Type_long, name %in% c("PA", "Prop")),
            aes(COG, value, fill = Type),
            stat = "identity", position = "dodge") +
@@ -9855,981 +4936,14 @@ fig7 <- ggplot() +
         axis.text.x = element_text(size = 8, angle = 45, hjust = 1),
         axis.title = element_blank(),
         plot.margin = margin(5, 5, 5, 10, "pt"))
-fig7
-pdf("FinalFigs/Figure7.pdf", width = 8, height = 6)
-fig7
+figS11
+pdf("FinalFigs/FigureS11.pdf", width = 8, height = 6)
+figS11
 dev.off()
-png("FinalFigs/Figure7.png", width = 8, height = 6, units = "in", res = 300)
-fig7
-dev.off()
-
-
-
-#### 14. Plants ####
-d_331_veg <- d_331 %>%
-  mutate(SampleID = as.character(sampleID)) %>%
-  dplyr::select(SampleID, vegetation_dom_grasses, vegetation_dom_shrubs, 
-                vegetation_dom_trees, vegetation_total_cover, vegetation_type) %>%
-  filter(vegetation_dom_grasses != "")
-d_species_uniq <- d_331_veg %>%
-  separate_rows(vegetation_dom_grasses, sep = "; ") %>%
-  separate_rows(vegetation_dom_shrubs, sep = "; ") %>%
-  separate_rows(vegetation_dom_trees, sep = "; ") %>%
-  dplyr::select(SampleID, vegetation_dom_grasses, vegetation_dom_shrubs, 
-                vegetation_dom_trees) %>%
-  filter(vegetation_dom_grasses != "") %>%
-  pivot_longer(c(vegetation_dom_grasses, vegetation_dom_shrubs, 
-                 vegetation_dom_trees), names_to = "Group", values_to = "Species") %>%
-  separate(Species, sep = " ", into = c("Genus", "Species", "Abund")) %>%
-  mutate(Species = tolower(as.character(Species))) %>%
-  mutate(Spp = paste(Genus, Species, sep = " ")) %>%
-  mutate(Genus = gsub("Acasia", "Acacia", Genus)) %>%
-  mutate(Genus = gsub("Cloris", "Chloris", Genus)) %>%
-  mutate(Genus = gsub("Cymbogon", "Cymbopogon", Genus)) %>%
-  mutate(Genus = gsub("lomandra", "Lomandra", Genus)) %>%
-  mutate(Genus = gsub("Noteleaea", "Notelaea", Genus)) %>%
-  mutate(Spp = gsub("Cloris ventricosa", "Chloris ventricosa", Spp)) %>%
-  mutate(Spp = gsub("Cymbogon refractus", "Cymbopogon refractus", Spp)) %>%
-  mutate(Spp = gsub("Lepidosperma lateral", "Lepidosperma laterale", Spp)) %>%
-  mutate(Spp = gsub("Lepidosperma lateralee", "Lepidosperma laterale", Spp)) %>%
-  mutate(Spp = gsub("Noteleaea longofolia", "Notelaea longifolia", Spp)) %>%
-  mutate(Spp = gsub("lomandra filiformis", "Lomandra filiformis", Spp)) %>%
-  mutate(Spp = gsub("Eucalyptus cebra", "Eucalyptus crebra", Spp)) %>%
-  mutate(Spp = gsub("Acasia parramattensis", "Acacia parramattensis", Spp)) %>%
-  mutate(Spp = gsub("Corymbia gummifeia", "Corymbia gummifera", Spp)) %>%
-  mutate(Spp = gsub("Elaeodendron austale", "Elaeodendron australe", Spp)) %>%
-  mutate(Spp = gsub("Leptospermum trinenium", "Leptospermum trinervium", Spp)) %>%
-  mutate(Spp = gsub("Lomandra logifolia", "Lomandra longifolia", Spp)) %>%
-  mutate(Spp = gsub("Oplismenus imbecillus", "Oplismenus imbecillis", Spp)) %>%
-  mutate(Spp = gsub("Syzygium austale", "Syzygium australe", Spp)) %>%
-  mutate(Spp = gsub("Pittosporum revolutum\\(3%\\)", "Pittosporum revolutum", Spp)) %>%
-  mutate(Spp = gsub("Rytidosperma \\(1%\\)", "Rytidosperma sp.", Spp)) %>%
-  mutate(Spp = gsub("Rytidosperma \\(5%\\)", "Rytidosperma sp.", Spp)) %>%
-  group_by(Spp) %>%
-  slice_head(n = 1) %>%
-  ungroup() %>%
-  filter(Spp != "0 NA") %>%
-  arrange(Spp)
-# Need to get family level because first pass showed species and genus not working well!
-d_species_uniq$Family <- c(rep("Fabaceae", 6), 
-                           rep("Casuarinaceae", 2),
-                           "Rhamnaceae",
-                           rep("Myrtaceae", 4),
-                           rep("Poaceae", 3),
-                           "Rubiaceae",
-                           rep("Poaceae", 2),
-                           rep("Proteaceae", 3),
-                           "Poaceae",
-                           rep("Malvaceae", 2),
-                           "Phyllanthaceae",
-                           "Pittosporaceae",
-                           "Myrtaceae",
-                           rep("Cunoneaceae", 2),
-                           rep("Poaceae", 2),
-                           rep("Lamiaceae", 2),
-                           "Myrtaceae",
-                           "Cyperaceae",
-                           "Poaceae",
-                           "Poaceae",
-                           "Cyperaceae",
-                           rep("Fabaceae", 2),
-                           "Celastraceae",
-                           rep("Asphodelaceae", 3),
-                           "Poaceae",
-                           "Fabaceae",
-                           "Sapindaceae",
-                           "Elaeocarpaceae",
-                           "Celastraceae",
-                           rep("Poaceae", 2),
-                           "Scrophulariaceae",
-                           rep("Myrtaceae", 13),
-                           "Santalaceae",
-                           "Moraceae",
-                           "Phyllanthaceae",
-                           "Proteaceae",
-                           rep("Proteaceae", 2),
-                           "Dilleniaceae",
-                           "Euphorbiaceae",
-                           "Pittosporaceae",
-                           "Poaceae",
-                           "Fabaceae",
-                           "Proteaceae",
-                           "Juncaceae",
-                           rep("Myrtaceae", 2),
-                           "Poaceae",
-                           "Cyperaceae",
-                           rep("Myrtaceae", 2),
-                           rep("Asparagaceae", 6),
-                           "Celastraceae",
-                           rep("Myrtaceae", 4),
-                           "Meliaceae",
-                           "Poaceae",
-                           "Scrophulariaceae",
-                           rep("Oleaceae", 2),
-                           rep("Poaceae", 3),
-                           "Asteraceae",
-                           rep("Poaceae", 2),
-                           "Poaceae",
-                           "Proteaceae",
-                           "Phyllanthaceae",
-                           rep("Pittosporaceae", 2),
-                           "Araliaceae",
-                           "Cyperaceae",
-                           "Fabaceae",
-                           "Poaceae",
-                           "Poaceae",
-                           "Myrtaceae",
-                           "Myrtaceae",
-                           rep("Poaceae", 2),
-                           "Cannabaceae")
-unique(d_species_uniq$Spp) # 122 species across the 48/331 samples w veg data
-unique(d_species_uniq$Genus) # 71 genera
-unique(d_species_uniq$Family) # 29 families
-
-d_species <- d_331_veg %>%
-  separate_rows(vegetation_dom_grasses, sep = "; ") %>%
-  separate_rows(vegetation_dom_shrubs, sep = "; ") %>%
-  separate_rows(vegetation_dom_trees, sep = "; ") %>%
-  dplyr::select(SampleID, vegetation_dom_grasses, vegetation_dom_shrubs, 
-                vegetation_dom_trees) %>%
-  filter(vegetation_dom_grasses != "") %>%
-  pivot_longer(c(vegetation_dom_grasses, vegetation_dom_shrubs, 
-                 vegetation_dom_trees), names_to = "Group", values_to = "Species") %>%
-  separate(Species, sep = " ", into = c("Genus", "Species", "Abund")) %>%
-  mutate(Species = tolower(as.character(Species))) %>%
-  mutate(Spp = paste(Genus, Species, sep = " ")) %>%
-  mutate(Genus = gsub("Acasia", "Acacia", Genus)) %>%
-  mutate(Genus = gsub("Cloris", "Chloris", Genus)) %>%
-  mutate(Genus = gsub("Cymbogon", "Cymbopogon", Genus)) %>%
-  mutate(Genus = gsub("lomandra", "Lomandra", Genus)) %>%
-  mutate(Genus = gsub("Noteleaea", "Notelaea", Genus)) %>%
-  mutate(Spp = gsub("Cloris ventricosa", "Chloris ventricosa", Spp)) %>%
-  mutate(Spp = gsub("Cymbogon refractus", "Cymbopogon refractus", Spp)) %>%
-  mutate(Spp = gsub("Lepidosperma lateral", "Lepidosperma laterale", Spp)) %>%
-  mutate(Spp = gsub("Lepidosperma lateralee", "Lepidosperma laterale", Spp)) %>%
-  mutate(Spp = gsub("Noteleaea longofolia", "Notelaea longifolia", Spp)) %>%
-  mutate(Spp = gsub("lomandra filiformis", "Lomandra filiformis", Spp)) %>%
-  mutate(Spp = gsub("Eucalyptus cebra", "Eucalyptus crebra", Spp)) %>%
-  mutate(Spp = gsub("Acasia parramattensis", "Acacia parramattensis", Spp)) %>%
-  mutate(Spp = gsub("Corymbia gummifeia", "Corymbia gummifera", Spp)) %>%
-  mutate(Spp = gsub("Elaeodendron austale", "Elaeodendron australe", Spp)) %>%
-  mutate(Spp = gsub("Leptospermum trinenium", "Leptospermum trinervium", Spp)) %>%
-  mutate(Spp = gsub("Lomandra logifolia", "Lomandra longifolia", Spp)) %>%
-  mutate(Spp = gsub("Oplismenus imbecillus", "Oplismenus imbecillis", Spp)) %>%
-  mutate(Spp = gsub("Syzygium austale", "Syzygium australe", Spp)) %>%
-  mutate(Spp = gsub("Pittosporum revolutum\\(3%\\)", "Pittosporum revolutum", Spp)) %>%
-  mutate(Spp = gsub("Rytidosperma \\(1%\\)", "Rytidosperma sp.", Spp)) %>%
-  mutate(Spp = gsub("Rytidosperma \\(5%\\)", "Rytidosperma sp.", Spp)) %>%
-  filter(Spp != "0 NA") %>%
-  group_by(SampleID, Spp) %>%
-  slice_head(n = 1) %>%
-  ungroup() %>%
-  arrange(Spp)
-
-
-
-#### _Chloroplasts ####
-# Try Sylph on chloroplast database
-
-# Note that BASE has some plant data for rows 113-159 (n = 46), can use to validate
-# Download the metadata https://ngdc.cncb.ac.cn/cgir/genome (Hua et al. 2022)
-# plant_meta <- read.csv("data/Genome_Infor_Result.csv")
-# Nope, can only do 20 at a time. Use NCBI
-plant_meta <- read.delim("data/ncbi_chloroplast_metadata.tsv") %>% # 14707
-  separate(Organism.name, remove = F, into = c("Genus", "Species"), sep = " ")
-length(unique(plant_meta$Organism.name)) # 14687
-length(unique(plant_meta$Organism.taxid)) # 14687
-table(plant_meta$Organelle.type) # 12989 chloro, 1718 plastid
-table(plant_meta$Topology) # 14666 circular, 40 linear, 1 unknown
-range(plant_meta$Length) # 11348 to 1352306
-hist(plant_meta$Length)
-
-# Need to see if the species in the veg data have chloroplast genomes
-sum(d_species_uniq$Spp %in% plant_meta$Organism.name) # 13
-sum(unique(d_species_uniq$Genus) %in% unique(plant_meta$Genus)) # 39
-d_species_db <- d_species_uniq %>%
-  filter(Spp %in% plant_meta$Organism.name)
-d_species_uniq$match <- sapply(d_species_uniq$Spp, function(x) any(grepl(x, plant_meta$Organism.name)))
-sum(d_species_uniq$match == TRUE) # Only 13 species were in the chloroplast database
-
-
-
-# 99%
-chloro_sylph_raw <- read.delim("data/sylph_profile_chloro14706_99.tsv") %>%
-  mutate(GenomeID = gsub("/scratch/alpine/clbd1748/Australia_copy/chloroplasts/",
-                         "", Genome_file))
-chloro_sylph <- read.delim("data/sylph_profile_chloro14706_99.tsv") %>%
-  mutate(SampleID = gsub("/scratch/alpine/clbd1748/Australia_copy/QC_reads/", 
-                         "", Sample_file)) %>%
-  separate(SampleID, into = c("SampleID", "Junk1", "Junk2"), sep = "_") %>%
-  dplyr::select(-Junk1, -Junk2) %>%
-  mutate(GenomeID = gsub("/scratch/alpine/clbd1748/Australia_copy/chloroplasts/",
-                         "", Genome_file)) %>%
-  mutate(GenomeID = gsub(".fna",
-                         "", GenomeID)) %>%
-  left_join(., d_331_veg, by = "SampleID")
-length(unique(chloro_sylph$SampleID)) # 18/331 samples
-length(unique(chloro_sylph$GenomeID)) # 18/14606 genomes
-
-# 98%
-chloro_sylph_raw <- read.delim("data/sylph_profile_chloro14706_98.tsv") %>%
-  mutate(GenomeID = gsub("/scratch/alpine/clbd1748/Australia_copy/chloroplasts/",
-                         "", Genome_file))
-chloro_sylph <- read.delim("data/sylph_profile_chloro14706_98.tsv") %>%
-  mutate(SampleID = gsub("/scratch/alpine/clbd1748/Australia_copy/QC_reads/", 
-                         "", Sample_file)) %>%
-  separate(SampleID, into = c("SampleID", "Junk1", "Junk2"), sep = "_") %>%
-  dplyr::select(-Junk1, -Junk2) %>%
-  mutate(GenomeID = gsub("/scratch/alpine/clbd1748/Australia_copy/chloroplasts/",
-                         "", Genome_file)) %>%
-  mutate(GenomeID = gsub(".fna",
-                         "", GenomeID)) %>%
-  left_join(., d_331_veg, by = "SampleID")
-length(unique(chloro_sylph$SampleID)) # 42/331 samples
-length(unique(chloro_sylph$GenomeID)) # 41/14606 genomes
-
-# 97%
-chloro_sylph_raw <- read.delim("data/sylph_profile_chloro14706_97.tsv") %>%
-  mutate(GenomeID = gsub("/scratch/alpine/clbd1748/Australia_copy/chloroplasts/",
-                         "", Genome_file))
-chloro_sylph <- read.delim("data/sylph_profile_chloro14706_97.tsv") %>%
-  mutate(SampleID = gsub("/scratch/alpine/clbd1748/Australia_copy/QC_reads/", 
-                         "", Sample_file)) %>%
-  separate(SampleID, into = c("SampleID", "Junk1", "Junk2"), sep = "_") %>%
-  dplyr::select(-Junk1, -Junk2) %>%
-  mutate(GenomeID = gsub("/scratch/alpine/clbd1748/Australia_copy/chloroplasts/",
-                         "", Genome_file)) %>%
-  mutate(GenomeID = gsub(".fna",
-                         "", GenomeID)) %>%
-  left_join(., d_331_veg, by = "SampleID")
-length(unique(chloro_sylph$SampleID)) # 55/331 samples
-length(unique(chloro_sylph$GenomeID)) # 50/14606 genomes
-
-# 96%
-chloro_sylph_raw <- read.delim("data/sylph_profile_chloro14706_96.tsv") %>%
-  mutate(GenomeID = gsub("/scratch/alpine/clbd1748/Australia_copy/chloroplasts/",
-                         "", Genome_file))
-chloro_sylph <- read.delim("data/sylph_profile_chloro14706_96.tsv") %>%
-  mutate(SampleID = gsub("/scratch/alpine/clbd1748/Australia_copy/QC_reads/", 
-                         "", Sample_file)) %>%
-  separate(SampleID, into = c("SampleID", "Junk1", "Junk2"), sep = "_") %>%
-  dplyr::select(-Junk1, -Junk2) %>%
-  mutate(GenomeID = gsub("/scratch/alpine/clbd1748/Australia_copy/chloroplasts/",
-                         "", Genome_file)) %>%
-  mutate(GenomeID = gsub(".fna",
-                         "", GenomeID)) %>%
-  left_join(., d_331_veg, by = "SampleID")
-length(unique(chloro_sylph$SampleID)) # 62/331 samples
-length(unique(chloro_sylph$GenomeID)) # 56/14606 genomes
-
-# 95%
-chloro_sylph_raw <- read.delim("data/sylph_profile_chloro14706_95.tsv") %>%
-  mutate(GenomeID = gsub("/scratch/alpine/clbd1748/Australia_copy/chloroplasts/",
-                         "", Genome_file))
-chloro_sylph <- read.delim("data/sylph_profile_chloro14706_95.tsv") %>%
-  mutate(SampleID = gsub("/scratch/alpine/clbd1748/Australia_copy/QC_reads/", 
-                         "", Sample_file)) %>%
-  separate(SampleID, into = c("SampleID", "Junk1", "Junk2"), sep = "_") %>%
-  dplyr::select(-Junk1, -Junk2) %>%
-  mutate(GenomeID = gsub("/scratch/alpine/clbd1748/Australia_copy/chloroplasts/",
-                         "", Genome_file)) %>%
-  mutate(GenomeID = gsub(".fna",
-                         "", GenomeID)) %>%
-  left_join(., d_331_veg, by = "SampleID") %>%
-  left_join(., plant_meta, by = c("GenomeID" = "RefSeq.accession"))
-length(unique(chloro_sylph$SampleID)) # 67/331 samples
-length(unique(chloro_sylph$GenomeID)) # 67/14606 genomes
-length(unique(chloro_sylph$Species)) # 64 species
-length(unique(chloro_sylph$Genus)) # 60 genera
-# Note there was one sample with veg data
-chloro_sylph_wVeg <- chloro_sylph %>%
-  filter(SampleID %in% d_331_veg$SampleID)
-  
-# That had Corymbia gummifera (8%) which is in the db, and Sylph didn't detect it.
-rich <- chloro_sylph %>%
-  group_by(SampleID) %>%
-  count()
-table(rich$n)
-
-# How many of these 67 were in the BASE veg data?
-sum(unique(chloro_sylph$Organism.name) %in% d_species$Spp) # 1
-sum(unique(chloro_sylph$Genus) %in% unique(d_species_uniq$Genus)) # 5
-chloro_sylph_match <- chloro_sylph %>%
-  filter(chloro_sylph$Organism.name %in% d_species$Spp)
-
-
-
-#### _trnL ####
-# Lucky Devin Leopold at Jonah Ventures already had made a trnL database!
-trnL <- microseq::readFasta("~/Desktop/Fierer/Strains/trnL_taxDB_20250217.fasta")
-trnL2 <- trnL %>%
-  separate(Header, into = c("IDENTIFIER", "Domain", "Phylum", "Class", "Order",
-                            "Family", "Genus", "Species"), sep = ";")
-length(unique(trnL2$Species)) # 65208
-# So there are some duplicates. Check
-trnL_dup <- trnL2 %>%
-  group_by(Species) %>%
-  summarise(count = n())
-# Good to know, but I think duplicates are okay
-# Check the length distribution. Then format for phyloFlash
-# Range is 100 to 289, don't filter
-trnL_spp <- trnL2 %>%
-  mutate(INTEGER1 = 1,
-         INTEGER2 = nchar(Sequence)) %>%
-  mutate(TAXONOMY = paste(Domain, Phylum, Class, Order, Family, Genus, Species, sep = ";")) %>%
-  mutate(Header = paste(IDENTIFIER, ".", INTEGER1, ".", INTEGER2, " ", TAXONOMY, 
-                        sep = "")) %>%
-  dplyr::select(Header, Sequence)
-range(trnL_spp$INTEGER2) # 100 to 289
-hist(trnL_spp$INTEGER2) # Most are around 150 bp
-#microseq::writeFasta(trnL_spp, "~/Desktop/Fierer/Strains/SILVA_CustomDB_trnL.fasta")
-
-# Need to see if the species and genera in the veg data have trnL seqs
-sum(d_species_uniq$Spp %in% trnL2$Species) # 47/122 (this is 34 more than chloroplast)
-sum(unique(d_species_uniq$Genus) %in% unique(trnL2$Genus)) # 65/71
-sum(unique(d_species_uniq$Family) %in% unique(trnL2$Family)) # 28/29
-d_species_db <- d_species_uniq %>%
-  filter(Spp %in% trnL2$Species)
-d_species_uniq$match <- sapply(d_species_uniq$Spp, function(x) any(grepl(x, trnL2$Species)))
-sum(d_species_uniq$match == TRUE)
-# 48 (i.e, using grep found 1 more than %in%)
-
-
-# Analyze phyloFlash results
-setwd("~/Desktop/Fierer/Strains/Australia/pf_trnL/")
-# Some output files had zero bytes so removed
-files <- list.files()
-files
-# 304/331 samples have phyloFlash data! 27 had no plants detected!
-
-merged_data <- files %>%
-  lapply(function(file) {
-    sample_id <- gsub("\\.phyloFlash.NTUfull_abundance\\.csv", "", basename(file))
-    data <- read.csv(file, header = FALSE) %>%
-      set_names(c("NTU", sample_id)) %>%
-      return(data)
-  }) %>%
-  reduce(function(x, y) merge(x, y, by = "NTU", all = TRUE))
-merged_data[is.na(merged_data)] <- 0
-sample_id <- data.frame(fullname = list.files()) %>%
-  separate(fullname, into = c("sampleID", "Junk1", "Junk2", sep = "_"))
-names(merged_data) <- c("NTU", sample_id$sampleID)
-setwd("~/Documents/GitHub/AussieStrains/")
-
-# Now see if those 47 species, 65 genera and 28 families with trnL seqs were detected
-# In the whole dataset:
-veg_pf <- merged_data %>%
-  mutate(Tot = rowSums(.[2:ncol(.)])) %>%
-  arrange(desc(Tot)) %>%
-  separate(NTU, into = c("Domain", "Phylum", "Class", "Order", "Family", 
-                         "Genus", "Species"), sep = ";", remove = F) %>%
-  mutate(Spp = paste(Genus, Species, sep = " "))
-sum(d_species_uniq$Spp %in% unique(veg_pf$Species)) # 6 of 47 possible identified
-sum(unique(d_species_uniq$Genus) %in% unique(veg_pf$Genus)) # 34  of 65 possible identified
-sum(unique(d_species_uniq$Family) %in% unique(veg_pf$Family)) # 27 of 28 possible identified
-
-# In the 36/48 samples with veg and pf data
-Fam <- d_species_uniq %>%
-  dplyr::select(Spp, Family)
-d_species_wPF <- d_species %>%
-  filter(SampleID %in% names(merged_data)) %>%
-  left_join(., Fam, by = "Spp")
-d_species_wPF_uniq <- d_species_uniq %>%
-  filter(SampleID %in% names(merged_data))
-length(unique(d_species$SampleID)) # 48
-length(unique(d_species_wPF$SampleID)) # 36 overlap
-length(unique(d_species_wPF_uniq$SampleID)) # Only 26, don't use
-length(unique(d_species_wPF$Spp)) # 110 of the 122 in the overlapping dataset
-length(unique(d_species_wPF$Genus)) # 63 of the 71 in the overlapping dataset
-length(unique(d_species_wPF$Family)) # 24 of the 29 families in the overlapping dataset
-sum(unique(d_species_wPF$Spp) %in% unique(trnL2$Species)) # 41
-sum(unique(d_species_wPF$Genus) %in% unique(trnL2$Genus)) # 57
-sum(unique(d_species_wPF$Family) %in% unique(trnL2$Family)) # 23
-veg_pf <- merged_data %>%
-  dplyr::select(NTU, all_of(unique(d_species_wPF$SampleID))) %>%
-  mutate(Tot = rowSums(.[2:ncol(.)])) %>%
-  arrange(desc(Tot)) %>%
-  separate(NTU, into = c("Domain", "Phylum", "Class", "Order", "Family", 
-                         "Genus", "Species"), sep = ";", remove = F) %>%
-  mutate(Spp = paste(Genus, Species, sep = " "))
-sum(unique(d_species_wPF$Spp) %in% unique(veg_pf$Species)) # 6 of 41 possible identified
-sum(unique(d_species_wPF$Genus) %in% unique(veg_pf$Genus)) # 28  of 57 possible identified
-sum(unique(d_species_wPF$Family) %in% unique(veg_pf$Family)) # 22 of 23 possible identified
-
-# Andrew sent over more plant data
-ala <- read.csv("data/records_plant_climate_ALA.csv")
-# This doesn't have any species though, just more broad categories and info
-
-# Check num seqs per sample
-seqs <- data.frame(SampleID = names(merged_data[2:ncol(merged_data)]),
-                   Seqs = colSums(merged_data[2:ncol(merged_data)]))
-hist(seqs$Seqs)
-range(seqs$Seqs)
-
-# Convert the merged data to mctoolrs format
-# Change parentheses to NA
-length(unique(merged_data$NTU))
-seqtab_wTax <- merged_data %>%
-  mutate(RowID = row_number()) %>%
-  mutate(OTU = paste("OTU", RowID, sep = "_")) %>%
-  separate(NTU, into = c("Domain", "Phylum", "Class", "Order", "Family", 
-                         "Genus", "Species"), sep = ";") %>%
-  mutate(across(everything(), ~ ifelse(grepl("\\(|\\)", .), "NA", .))) %>%
-  mutate(taxonomy = paste(Domain, Phylum, Class, Order, Family, Genus, Species,
-                          sep = ";")) %>%
-  dplyr::select(-RowID) %>%
-  dplyr::select(OTU, everything(), taxonomy)
-names(seqtab_wTax)
-#out_fp <- "data/seqtab_wTax_mctoolsr_trnL.txt"
-#write("#Exported for mctoolsr", out_fp)
-#suppressWarnings(write.table(seqtab_wTax, out_fp, sep = "\t", row.names = FALSE, append = TRUE))
-
-# Import
-tax_table_fp <- "data/seqtab_wTax_mctoolsr_trnL.txt"
-map_fp <- "~/Documents/GitHub/AussieStrains/data/metadata_331.txt"
-input = load_taxa_table(tax_table_fp, map_fp) # 304 samples loaded
-input$map_loaded$sampleID <- rownames(input$map_loaded)
-input <- filter_data(input, 
-                     filter_cat = "sampleID", 
-                     keep_vals = d_sylph$sampleID) # 244 of 268 have plant data
-# Check singletons and doubletons
-singdoub <- data.frame("count" = rowSums(input$data_loaded)) %>%
-  filter(count < 3) %>%
-  mutate(ASV = rownames(.)) # 3665. Don't remove, since will aggregate
-input_filt <- filter_taxa_from_input(input,
-                                     taxa_IDs_to_remove = singdoub$ASV) # 3665 removed
-
-# Rarefaction
-rarecurve(t(input$data_loaded), step = 100, label = F)
-rarecurve(t(input_filt$data_loaded), step = 100, label = F)
-
-# That is very unrealistic. Need to go ahead and aggregate to species, genus, family etc.
-tax_sum_phyla <- summarize_taxonomy(input = input, 
-                                    level = 2, 
-                                    report_higher_tax = F) # 1, Streptophyta
-tax_sum_class <- summarize_taxonomy(input = input, 
-                                    level = 3, 
-                                    report_higher_tax = F) # 20
-tax_sum_order <- summarize_taxonomy(input = input, 
-                                    level = 4, 
-                                    report_higher_tax = F) # 120
-tax_sum_family <- summarize_taxonomy(input = input, 
-                                     level = 5, 
-                                     report_higher_tax = F) # 477
-tax_sum_family2 <- summarize_taxonomy(input = input,
-                                      relative = F,
-                                      level = 5, 
-                                      report_higher_tax = F) # 477
-tax_sum_genus <- summarize_taxonomy(input = input, 
-                                     level = 6, 
-                                     report_higher_tax = F) # 2926
-tax_sum_species <- summarize_taxonomy(input = input, 
-                                      level = 7, 
-                                      report_higher_tax = F) # 6421
-tax_sum_species2 <- summarize_taxonomy(input = input, 
-                                       relative = F,
-                                       level = 7, 
-                                       report_higher_tax = F) # 6421
-pdf("InitialFigs/trnL_rarefaction.pdf", width = 7, height = 5)
-rarecurve(t(tax_sum_species2), step = 100, label = F)
-dev.off()
-
-sort(colSums(input$data_loaded))
-pdf("InitialFigs/trnL_seqs.pdf", width = 7, height = 5)
-plot(sort(colSums(input$data_loaded)), xlab = "Sample rank", ylab = "# seqs")
-dev.off()
-mean(colSums(input$data_loaded)) # 555.6434
-se(colSums(input$data_loaded)) # 49.8105
-
-sort(colSums(input_filt$data_loaded))
-plot(sort(colSums(input_filt$data_loaded)))
-mean(colSums(input_filt$data_loaded)) # 536.0287
-se(colSums(input_filt$data_loaded)) # 48.09166
-
-# Add richness and Shannon
-input_filt$map_loaded$rich <- specnumber(input_filt$data_loaded, MARGIN = 2)
-input_filt$map_loaded$shannon <- diversity(input_filt$data_loaded, 
-                                                index = "shannon", MARGIN = 2)
-
-# Species and family (input)
-input$map_loaded$rich <- specnumber(tax_sum_species, MARGIN = 2)
-range(input$map_loaded$rich)
-input$map_loaded$richFam <- specnumber(tax_sum_family, MARGIN = 2)
-range(input$map_loaded$richFam) # 1 to 207
-
-# Plot seqs and rich against env
-input$map_loaded$trnL_seqs <- colSums(input$data_loaded)
-ggplot(input$map_loaded, aes(vegetation_type, trnL_seqs)) +
-  geom_boxplot(outliers = F) +
-  geom_jitter(width = 0.2) +
-  labs(x = "Vegetation", y = "trnL sequences") +
-  theme_bw()
-pdf("InitialFigs/trnL_speciesRichness.pdf", width = 7, height = 5)
-ggplot(input$map_loaded, aes(vegetation_type, rich)) +
-  geom_boxplot(outliers = F) +
-  geom_jitter(width = 0.2) +
-  labs(x = "Vegetation", y = "Plant species richness") +
-  theme_bw()
-dev.off()
-
-input_filt$map_loaded$trnL_seqs <- colSums(input_filt$data_loaded)
-ggplot(input_filt$map_loaded, aes(vegetation_type, trnL_seqs)) +
-  geom_boxplot(outliers = F) +
-  geom_jitter(width = 0.2) +
-  labs(x = "Vegetation", y = "trnL sequences") +
-  theme_bw()
-ggplot(input_filt$map_loaded, aes(vegetation_type, rich)) +
-  geom_boxplot(outliers = F) +
-  geom_jitter(width = 0.2) +
-  labs(x = "Vegetation", y = "trnL richness") +
-  theme_bw()
-
-ggplot(input_filt$map_loaded, aes(AI, trnL_seqs)) +
-  geom_point() +
-  labs(x = "Aridity index", y = "trnL sequences") +
-  theme_bw()
-ggplot(input_filt$map_loaded, aes(AI, rich)) +
-  geom_point() +
-  labs(x = "Aridity index", y = "trnL richness") +
-  theme_bw()
-
-ggplot(input_filt$map_loaded, aes(AI, rich)) +
-  geom_point() +
-  labs(x = "Aridity index", y = "trnL richness") +
-  theme_bw()
-
-
-
-#### __Composition ####
-bc <- calc_dm(tax_sum_species)
-nmds <- calc_ordination(bc, "nmds", input$map_loaded)
-pdf("InitialFigs/trnL_nmds.pdf", width = 7, height = 5)
-mctoolsr::plot_ordination(input, nmds, color_cat = "vegetation_type", hulls = T)
-dev.off()
-
-# Rarefy and try again
-set.seed(530)
-input_rare <- single_rarefy(input, 1000) # n = 55
-sort(colSums(input_rare$data_loaded))
-tax_sum_speciesR <- summarize_taxonomy(input = input_rare, 
-                                       level = 7, 
-                                       report_higher_tax = F)
-bc <- calc_dm(tax_sum_speciesR)
-nmds <- calc_ordination(bc, "nmds", input_rare$map_loaded)
-mctoolsr::plot_ordination(input_rare, nmds, color_cat = "vegetation_type", hulls = T)
-
-# But we already knew species could be bad
-# Need to do at family level, with and without rarefaction
-bc <- calc_dm(tax_sum_family)
-nmds <- calc_ordination(bc, "nmds", input$map_loaded)
-pdf("InitialFigs/trnL_nmds_Fam.pdf", width = 7, height = 5)
-mctoolsr::plot_ordination(input, nmds, color_cat = "vegetation_type", hulls = T)
-dev.off()
-set.seed(530)
-input_rare <- single_rarefy(input, 1000) # n = 55
-sort(colSums(input_rare$data_loaded))
-tax_sum_familyR <- summarize_taxonomy(input = input_rare, 
-                                       level = 5, 
-                                       report_higher_tax = F)
-bc <- calc_dm(tax_sum_familyR)
-nmds <- calc_ordination(bc, "nmds", input_rare$map_loaded)
-mctoolsr::plot_ordination(input_rare, nmds, color_cat = "vegetation_type", hulls = T)
-
-set.seed(530)
-input_rare <- single_rarefy(input, 1500) # n = 27
-sort(colSums(input_rare$data_loaded))
-tax_sum_familyR <- summarize_taxonomy(input = input_rare, 
-                                      level = 5, 
-                                      report_higher_tax = F)
-bc <- calc_dm(tax_sum_familyR)
-nmds <- calc_ordination(bc, "nmds", input_rare$map_loaded)
-mctoolsr::plot_ordination(input_rare, nmds, color_cat = "vegetation_type", hulls = T)
-
-set.seed(530)
-input_rare <- single_rarefy(input, 2000) # n = 16
-sort(colSums(input_rare$data_loaded))
-tax_sum_familyR <- summarize_taxonomy(input = input_rare, 
-                                      level = 5, 
-                                      report_higher_tax = F)
-bc <- calc_dm(tax_sum_familyR)
-nmds <- calc_ordination(bc, "nmds", input_rare$map_loaded)
-mctoolsr::plot_ordination(input_rare, nmds, color_cat = "vegetation_type", hulls = T)
-
-set.seed(530)
-input_rare <- single_rarefy(input, 500) # n = 97
-sort(colSums(input_rare$data_loaded))
-tax_sum_familyR <- summarize_taxonomy(input = input_rare, 
-                                      level = 5, 
-                                      report_higher_tax = F)
-bc <- calc_dm(tax_sum_familyR)
-nmds <- calc_ordination(bc, "nmds", input_rare$map_loaded)
-mctoolsr::plot_ordination(input_rare, nmds, color_cat = "vegetation_type", hulls = T)
-
-cliffplot_taxa_bars(input, 5, "vegetation_type")
-cliffplot_taxa_bars(input, 4, "vegetation_type")
-cliffplot_taxa_bars(input, 3, "vegetation_type") # Mostly Magnoliopsida
-
-
-
-#### __Filt ####
-# Filter taxa and samples do at family level
-# Family needs to have at least 15 reads
-# Sample needs to have at least 100 reads
-input_filt <- input
-tax_sum_family2 <- summarize_taxonomy(input = input_filt,
-                                      relative = F,
-                                      level = 5, 
-                                      report_higher_tax = F)
-input_filt$data_loaded <- tax_sum_family2
-singdoub <- data.frame("count" = rowSums(input_filt$data_loaded)) %>%
-  filter(count < 15) %>%
-  mutate(ASV = rownames(.)) # 266
-input_filt <- filter_taxa_from_input(input_filt,
-                                     taxa_IDs_to_remove = singdoub$ASV) # 266 removed
-min100 <- data.frame("count" = colSums(input_filt$data_loaded)) %>%
-  filter(count < 100) %>%
-  mutate(SampleID = rownames(.)) # 114
-input_filt <- filter_data(input_filt,
-                          "sampleID",
-                          filter_vals = min100$SampleID) # 130 samples remaining
-
-fam_rel <- as.data.frame(decostand(t(input_filt$data_loaded), method = "total", MARGIN = 1)) %>%
-  t() %>%
-  as.data.frame()
-fam_prev <- data.frame("Family" = rownames(fam_rel),
-                       "Present" = rowSums(fam_rel > 0))
-input_filt$map_loaded$trnL_seqs <- colSums(input_filt$data_loaded)
-range(input_filt$map_loaded$trnL_seqs) # 104 to 3676
-input_filt$map_loaded$rich <- specnumber(input_filt$data_loaded, MARGIN = 2)
-range(input_filt$map_loaded$rich) # 32 to 176
-table(input_filt$map_loaded$vegetation_type)
-
-pdf("InitialFigs/trnL_filt_seqs.pdf", width = 7, height = 5)
-ggplot(input_filt$map_loaded, aes(vegetation_type, trnL_seqs, colour = vegetation_type)) +
-  geom_boxplot(outliers = F) +
-  geom_jitter(size = 2, width = 0.2) +
-  labs(x = "Vegetation", y = "# seqs", colour = NULL) +
-  scale_colour_manual(values = c("antiquewhite", "darkgreen", "gold", "purple",
-                                 "darkgoldenrod", "chartreuse3", "brown")) +
-  theme_bw() +
-  theme(legend.position = "none")
-dev.off()
-
-pdf("InitialFigs/trnL_filt_FamRichness.pdf", width = 7, height = 5)
-ggplot(input_filt$map_loaded, aes(vegetation_type, rich, colour = vegetation_type)) +
-  geom_boxplot(outliers = F) +
-  geom_jitter(size = 2, width = 0.2) +
-  labs(x = "Vegetation", y = "Plant family richness", colour = NULL) +
-  scale_colour_manual(values = c("antiquewhite", "darkgreen", "gold", "purple",
-                                "darkgoldenrod", "chartreuse3", "brown")) +
-  theme_bw() +
-  theme(legend.position = "none")
-dev.off()
-
-bc <- calc_dm(fam_rel)
-nmds <- calc_ordination(bc, "nmds", input_rare$map_loaded)
-pdf("InitialFigs/trnL_filt_FamNMDS.pdf", width = 7, height = 5)
-mctoolsr::plot_ordination(input_filt, nmds, color_cat = "vegetation_type", hulls = T) +
-  scale_color_manual(values = c("antiquewhite", "darkgreen", "gold", "purple",
-                               "darkgoldenrod", "chartreuse3", "brown")) +
-  scale_fill_manual(values = c("antiquewhite", "darkgreen", "gold", "purple",
-                               "darkgoldenrod", "chartreuse3", "brown"))
-dev.off()
-
-# What if high NA is driving this? Remove and rerun.
-fam_rel_nona <- fam_rel[!(rownames(fam_rel) == "NA"), ]
-bc <- calc_dm(fam_rel_nona)
-nmds <- calc_ordination(bc, "nmds", input_rare$map_loaded)
-pdf("InitialFigs/trnL_filt_FamNMDS_nona.pdf", width = 7, height = 5)
-mctoolsr::plot_ordination(input_filt, nmds, color_cat = "vegetation_type", hulls = T) +
-  scale_color_manual(values = c("antiquewhite", "darkgreen", "gold", "purple",
-                                "darkgoldenrod", "chartreuse3", "brown")) +
-  scale_fill_manual(values = c("antiquewhite", "darkgreen", "gold", "purple",
-                               "darkgoldenrod", "chartreuse3", "brown"))
-dev.off()
-
-pdf("InitialFigs/trnL_filt_FamTop11.pdf", width = 7, height = 5)
-plot_taxa_bars(fam_rel, input_filt$map_loaded, "vegetation_type", 11, data_only = FALSE) +
-  scale_fill_brewer(palette = "Paired") +
-  labs(fill = "Family") +
-  scale_y_continuous(expand = c(0,0)) +
-  theme_minimal()
+png("FinalFigs/FigureS11.png", width = 8, height = 6, units = "in", res = 300)
+figS11
 dev.off()
 
 
 
-#### _BOLD ####
-# If you go to ID a plant, it says the public plant database, from combined matK, rbcL, ITS is 453,647 non-redundant.
-# https://bench.boldsystems.org/index.php/Public_SearchTerms
-# If I search "Tracheophyta" in the data portal (vascular plants), this yields:
-# Found 384,277 published records,
-# with 384,277 records with sequences,
-# forming 0 BINs (clusters),
-# with specimens from 213 countries,
-# deposited in 386 institutions.
-# Of these records, 374,967 have species names, and represent 122,083 species.
-# Try downloading all of those!
-
-# Import the download
-# Split by gene, then reformat for PhyloFlash
-# See section 4.3 https://hrgv.github.io/phyloFlash/install.html
-# Fasta headers should have the format {IDENTIFIER}.{INTEGER}.{INTEGER} {TAXONOMY-STRING} where:
-#   IDENTIFIER is a unique sequence identifier which does not have spaces or periods
-# The difference between the two INTEGERs should be the length of the sequence, e.g. 1.1700 for a 1700 bp sequence
-# TAXONOMY-STRING is in SILVA or NCBI format, delimited by semicolons with no spaces (but spaces in taxon names allowed)
-# There is a single space before the TAXONOMY-STRING
-# Make full taxonomy string: for example the MFD is like this:
-# FLASV2.1.1310 Bacteria;Proteobacteria;Alphaproteobacteria;Rhizobiales;Xanthobacteraceae;Bradyrhizobium;MFD_s_2
-
-bold <- microseq::readFasta("~/Desktop/Fierer/Strains/BOLD_plants.fasta")
-bold2 <- bold %>%
-  separate(Header, into = c("IDENTIFIER", "Species", "Gene"), sep = "\\|")
-length(unique(bold2$Species)) # 123789
-length(unique(bold2$Gene)) # 38??
-table(bold2$Gene)
-
-ITS2 <- bold2 %>%
-  filter(Gene == "ITS2")
-length(unique(ITS2$Species)) # 46061, 38810 after filtering
-ITS2_spp <- ITS2 %>%
-  group_by(Species) %>%
-  slice_head(n = 1) %>%
-  ungroup() %>%
-  separate(Species, remove = F, into = c("Genus", "Spp"), sep = " ") %>%
-  filter(is.na(Spp) == FALSE) %>%
-  mutate(INTEGER1 = 1,
-         INTEGER2 = nchar(Sequence)) %>%
-  filter(INTEGER2 >= 150 & INTEGER2 <= 400) %>%
-  mutate(TAXONOMY = gsub(" var. ", "_", Species)) %>%
-  mutate(TAXONOMY = gsub(" ", ";", TAXONOMY)) %>%
-  mutate(Domain = "Tracheophyta",
-         Phylum = "Tracheophyta",
-         Class = "Tracheophyta",
-         Order = "Tracheophyta",
-         Family = "Tracheophyta") %>%
-  mutate(TAXONOMY = paste(Domain, Phylum, Class, Order, Family, TAXONOMY, sep = ";")) %>%
-  mutate(Header = paste(IDENTIFIER, ".", INTEGER1, ".", INTEGER2, " ", TAXONOMY, 
-                        sep = "")) %>%
-  dplyr::select(Header, Sequence)
-range(ITS2_spp$INTEGER2) # 108 to 967
-hist(ITS2_spp$INTEGER2)
-
-ITS <- bold2 %>%
-  filter(Gene == "ITS") %>%
-  separate(Species, remove = F, into = c("Genus", "S"), sep = " ")
-length(unique(ITS$Species)) # 52434, 50703 after filtering
-ITS_spp <- ITS %>%
-  group_by(Species) %>%
-  slice_head(n = 1) %>%
-  ungroup() %>%
-  separate(Species, remove = F, into = c("Genus", "Spp"), sep = " ") %>%
-  filter(is.na(Spp) == FALSE) %>%
-  mutate(INTEGER1 = 1,
-         INTEGER2 = nchar(Sequence)) %>%
-  filter(INTEGER2 >= 500 & INTEGER2 <= 900) %>%
-  mutate(TAXONOMY = gsub(" var. ", "_", Species)) %>%
-  mutate(TAXONOMY = gsub(" ", ";", TAXONOMY)) %>%
-  mutate(Domain = "Tracheophyta",
-         Phylum = "Tracheophyta",
-         Class = "Tracheophyta",
-         Order = "Tracheophyta",
-         Family = "Tracheophyta") %>%
-  mutate(TAXONOMY = paste(Domain, Phylum, Class, Order, Family, TAXONOMY, sep = ";")) %>%
-  mutate(Header = paste(IDENTIFIER, ".", INTEGER1, ".", INTEGER2, " ", TAXONOMY, 
-                        sep = "")) %>%
-  dplyr::select(Header, Sequence)
-range(ITS_spp$INTEGER2) # 134 to 3344
-hist(ITS_spp$INTEGER2)
-#microseq::writeFasta(ITS_spp, "~/Downloads/SILVA_CustomDB_ITS.fasta")
-
-matK <- bold2 %>%
-  filter(Gene == "matK")
-length(unique(matK$Species)) # 54690
-# 53628 removing those without species classification
-# 53021 removing those >= 2000 bp
-matK_spp <- matK %>%
-  group_by(Species) %>%
-  slice_head(n = 1) %>%
-  ungroup() %>%
-  separate(Species, remove = F, into = c("Genus", "Spp"), sep = " ") %>%
-  filter(is.na(Spp) == FALSE) %>%
-  mutate(INTEGER1 = 1,
-         INTEGER2 = nchar(Sequence)) %>%
-  filter(INTEGER2 < 2000) %>%
-  mutate(TAXONOMY = gsub(" var. ", "_", Species)) %>%
-  mutate(TAXONOMY = gsub(" ", ";", TAXONOMY)) %>%
-  mutate(Domain = "Tracheophyta",
-         Phylum = "Tracheophyta",
-         Class = "Tracheophyta",
-         Order = "Tracheophyta",
-         Family = "Tracheophyta") %>%
-  mutate(TAXONOMY = paste(Domain, Phylum, Class, Order, Family, TAXONOMY, sep = ";")) %>%
-  mutate(Header = paste(IDENTIFIER, ".", INTEGER1, ".", INTEGER2, " ", TAXONOMY, 
-                        sep = "")) %>%
-  dplyr::select(Header, Sequence)
-range(matK_spp$INTEGER2) # 131 to 5602
-hist(matK_spp$INTEGER2)
-#microseq::writeFasta(matK_spp, "~/Downloads/SILVA_CustomDB_matK.fasta")
-
-rbcL <- bold2 %>%
-  filter(Gene == "rbcL")
-length(unique(rbcL$Species)) # 38132
-# 53628 removing those without species classification
-# 53021 removing those >= 2000 bp
-rbcL_spp <- rbcL %>%
-  group_by(Species) %>%
-  slice_head(n = 1) %>%
-  ungroup() %>%
-  separate(Species, remove = F, into = c("Genus", "Spp"), sep = " ") %>%
-  filter(is.na(Spp) == FALSE) %>%
-  mutate(INTEGER1 = 1,
-         INTEGER2 = nchar(Sequence)) %>%
-  filter(INTEGER2 < 2000) %>%
-  mutate(TAXONOMY = gsub(" var. ", "_", Species)) %>%
-  mutate(TAXONOMY = gsub(" ", ";", TAXONOMY)) %>%
-  mutate(Domain = "Tracheophyta",
-         Phylum = "Tracheophyta",
-         Class = "Tracheophyta",
-         Order = "Tracheophyta",
-         Family = "Tracheophyta") %>%
-  mutate(TAXONOMY = paste(Domain, Phylum, Class, Order, Family, TAXONOMY, sep = ";")) %>%
-  mutate(Header = paste(IDENTIFIER, ".", INTEGER1, ".", INTEGER2, " ", TAXONOMY, 
-                        sep = "")) %>%
-  dplyr::select(Header, Sequence)
-range(rbcL_spp$INTEGER2) # 131 to 5602
-hist(rbcL_spp$INTEGER2)
-#microseq::writeFasta(rbcL_spp, "~/Downloads/SILVA_CustomDB_rbcL.fasta")
-
-
-
-#### __ITS ####
-# Need to see if the species in the veg data have ITS seqs
-sum(d_species_uniq$Spp %in% ITS$Species) # 48 (this is 35 more than chloroplast)
-sum(unique(d_species_uniq$Genus) %in% unique(ITS$Genus)) # 67 genera
-d_species_db <- d_species_uniq %>%
-  filter(Spp %in% ITS$Species)
-d_species_uniq$match <- sapply(d_species_uniq$Spp, function(x) any(grepl(x, ITS$Species)))
-# 52 (using grep found 4 more)
-
-
-# Analyze phyloFlash results
-setwd("~/Desktop/Fierer/Strains/Australia/pf_ITS/")
-files <- list.files()
-# There are only 156 files. The other 175 had errors.
-# Error was: Can't use string as a HASH ref while "strict refs" in use
-# For now, proceed, see how these data look
-merged_data <- files %>%
-  lapply(function(file) {
-    sample_id <- gsub("\\.phyloFlash.NTUfull_abundance\\.csv", "", basename(file))
-    data <- read.csv(file, header = FALSE) %>%
-      set_names(c("NTU", sample_id)) %>%
-      return(data)
-  }) %>%
-  reduce(function(x, y) merge(x, y, by = "NTU", all = TRUE))
-merged_data[is.na(merged_data)] <- 0
-sample_id <- data.frame(fullname = list.files()) %>%
-  separate(fullname, into = c("sampleID", "Junk1", "Junk2", sep = "_"))
-names(merged_data) <- c("NTU", sample_id$sampleID)
-setwd("~/Documents/GitHub/AussieStrains/")
-
-# Now see if those 48 species with ITS seqs were detected
-d_species_wPF <- d_species %>%
-  filter(SampleID %in% names(merged_data))
-d_species_wPF_uniq <- d_species_uniq %>%
-  filter(SampleID %in% names(merged_data))
-length(unique(d_species$SampleID)) # 48
-length(unique(d_species_wPF$SampleID)) # 39 overlap
-length(unique(d_species_wPF$Spp)) # 111 of the 122 in the overlapping dataset
-veg_pf <- merged_data %>%
-  dplyr::select(NTU, all_of(unique(d_species_wPF$SampleID))) %>%
-  mutate(Tot = rowSums(.[2:ncol(.)])) %>%
-  filter(Tot > 0) %>%
-  arrange(desc(Tot)) %>%
-  separate(NTU, into = c("Domain", "Phylum", "Class", "Order", "Family", 
-                         "Genus", "Species"), sep = ";", remove = F) %>%
-  mutate(Spp = paste(Genus, Species, sep = " "))
-sum(d_species_wPF_uniq$Spp %in% ITS$Species) # 38
-sum(unique(d_species_wPF_uniq$Genus) %in% unique(ITS$Genus)) # 54
-sum(d_species_uniq$Spp %in% veg_pf$Spp) # 3 of 38 possible identified
-sum(unique(d_species_uniq$Genus) %in% unique(veg_pf$Genus)) # 18 of 54 possible
-
-# Change parentheses to NA
-length(unique(merged_data$NTU)) # 23391
-seqtab_wTax <- merged_data %>%
-  mutate(RowID = row_number()) %>%
-  mutate(OTU = paste("OTU", RowID, sep = "_")) %>%
-  separate(NTU, into = c("Domain", "Phylum", "Class", "Order", "Family", 
-                         "Genus", "Species"), sep = ";") %>%
-  mutate(across(everything(), ~ ifelse(grepl("\\(|\\)", .), "NA", .))) %>%
-  mutate(taxonomy = paste(Domain, Phylum, Class, Order, Family, Genus, Species,
-                          sep = ";")) %>%
-  dplyr::select(-RowID) %>%
-  dplyr::select(OTU, everything(), taxonomy)
-names(seqtab_wTax)
-#out_fp <- "data/seqtab_wTax_mctoolsr_ITS.txt"
-#write("#Exported for mctoolsr", out_fp)
-#suppressWarnings(write.table(seqtab_wTax, out_fp, sep = "\t", row.names = FALSE, append = TRUE))
-
-# Import
-tax_table_fp <- "data/seqtab_wTax_mctoolsr_ITS.txt"
-map_fp <- "~/Documents/GitHub/AussieStrains/data/metadata_331.txt"
-input = load_taxa_table(tax_table_fp, map_fp) # 156 samples loaded
-input$map_loaded$sampleID <- rownames(input$map_loaded)
-input <- filter_data(input, 
-                     filter_cat = "sampleID", 
-                     keep_vals = d_sylph$sampleID) # 128 of 268 have plant data
-# Check singletons and doubletons
-singdoub <- data.frame("count" = rowSums(input$data_loaded)) %>%
-  filter(count < 3) %>%
-  mutate(ASV = rownames(.)) # 15154 Don't remove, since will aggregate
-input_filt <- filter_taxa_from_input(input,
-                                     taxa_IDs_to_remove = singdoub$ASV) # 15154 removed
-
-# Rarefaction
-rarecurve(t(input$data_loaded), step = 100, label = F)
-rarecurve(t(input_filt$data_loaded), step = 100, label = F)
-
-# That is very unrealistic. Need to go ahead and aggregate to species, genus, family etc.
-tax_sum_genus <- summarize_taxonomy(input = input, 
-                                    level = 6, 
-                                    report_higher_tax = F) # 5090 genera
-tax_sum_species <- summarize_taxonomy(input = input, 
-                                      level = 7, 
-                                      report_higher_tax = F) # 6421 species
-sort(colSums(input_filt$data_loaded))
-plot(sort(colSums(input_filt$data_loaded)))
-mean(colSums(input_filt$data_loaded)) # 440.0625
-se(colSums(input_filt$data_loaded)) # 72.91068
-
-# Add richness and Shannon
-input_filt$map_loaded$rich <- specnumber(input_filt$data_loaded, MARGIN = 2)
-input_filt$map_loaded$shannon <- diversity(input_filt$data_loaded, 
-                                           index = "shannon", MARGIN = 2)
-
-# Plot seqs and rich against env
-ITS_seqs <- input_filt$map_loaded
-input_filt$map_loaded$ITS_seqs <- colSums(input_filt$data_loaded)
-ggplot(input_filt$map_loaded, aes(vegetation_type, ITS_seqs)) +
-  geom_boxplot(outliers = F) +
-  geom_jitter(width = 0.2) +
-  labs(x = "Vegetation", y = "ITS sequences") +
-  theme_bw()
-ggplot(input_filt$map_loaded, aes(vegetation_type, rich)) +
-  geom_boxplot(outliers = F) +
-  geom_jitter(width = 0.2) +
-  labs(x = "Vegetation", y = "ITS richness") +
-  theme_bw()
-
-ggplot(input_filt$map_loaded, aes(AI, ITS_seqs)) +
-  geom_point() +
-  labs(x = "Aridity index", y = "ITS sequences") +
-  theme_bw()
-ggplot(input_filt$map_loaded, aes(AI, rich)) +
-  geom_point() +
-  labs(x = "Aridity index", y = "ITS richness") +
-  theme_bw()
-
-ggplot(input_filt$map_loaded, aes(ITS_seqs, rich)) +
-  geom_point() +
-  labs(x = "ITS sequences", y = "ITS richness") +
-  theme_bw()
+#### End ####

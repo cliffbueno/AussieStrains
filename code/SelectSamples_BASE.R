@@ -1,13 +1,26 @@
-# Select BASE Samples to use
+# Select BASE samples to use
+# by Cliff Bueno de Mesquita, Fierer Lab, Summer 2024 to Spring 2025
 
 # Workflow:
-# Downloaded "Soil", "0-0.1m depth", "Conservation and Natural Environments"
+# From BASE, download "Soil", "0-0.1m depth", "Conservation and Natural Environments"
 # This yields 376 samples
 # 346 have define upland vegetation types (no mangrove, marsh, other, NA)
-# 339 have AI (aridity index) data
+# 339 have AI (aridity index) data from Zomer et al. 2022
 # 331 have > 10 million reads and < 40 million reads sequencing depth
-# 104 spreading aridity gradient. 4 bins with 26 MG each. 
-# Chose 26 samples with greatest depth for 3 arid bins, used all 26 of the least arid bin.
+
+# First chose 104 spreading aridity gradient. 4 bins with 26 metaG each. 
+# -Chose 26 samples with greatest depth for 3 arid bins, used all 26 of the least arid bin.
+# Evenutally ended up analyzing all 331
+
+# Sections in this script are (see document outline on right):
+# 1. Setup
+# 2. Explore
+# 3. Veg. Filter
+# 4. Aridity index (AI) filter
+# 5. Sequence (Seq) depth filter
+# 6. Final selection
+
+
 
 #### 1. Setup #####
 # Libraries
@@ -21,7 +34,7 @@ library(arules)
 # Functions
 `%notin%` <- Negate(`%in%`)
 
-# Working directory
+# Working directory (repo)
 setwd("~/Documents/GitHub/AussieStrains/")
 
 #### 2. Explore ####
@@ -65,13 +78,14 @@ coords346 <- d %>%
 
 # Per docs: Global-AI values need to be multiplied by 0.0001 to retrieve the values in the correct units.
 # Note these are AI from version 3 database, Zomer et al. 2022
+# They were confered spatially to each sample spatially by lat long in QGIS
 a <- read.csv("data/coords346_wAI.csv") %>%
   mutate(AI = ai_v3_yr * 0.0001) %>%
   mutate(Dataset = "BASE") %>%
   filter(is.na(et0_v3_yr) == FALSE) # 7 NA
 plot(a$AI)
 hist(a$AI)
-pdf("InitialFigs/BASE_n339_AI.pdf", width = 7, height = 5)
+#pdf("InitialFigs/BASE_n339_AI.pdf", width = 7, height = 5)
 ggplot(a, aes(x = Dataset, y = AI)) +
   geom_boxplot(outlier.shape = NA) +
   geom_jitter(size = 3, width = 0.1, alpha = 0.75) +
@@ -81,21 +95,21 @@ ggplot(a, aes(x = Dataset, y = AI)) +
   theme(axis.title = element_text(size = 14),
         axis.text = element_text(size = 12)) +
   theme_ggside_minimal()
-dev.off()
+#dev.off()
 
 coords_trans <- st_as_sf(a, 
                          coords = c('longitude', 'latitude'), 
                          crs=4326)
 ozmap()
 sf_oz <- ozmap("states")
-pdf("InitialFigs/Mapn339.pdf", width = 7, height = 5)
+#pdf("InitialFigs/Mapn339.pdf", width = 7, height = 5)
 ggplot(data = sf_oz) + 
   geom_sf(fill = "grey80", color = "white") +
   geom_sf(data = coords_trans,
           aes(color = AI)) +
   scale_color_gradient(low = "red", high = "blue") +
   theme_minimal()
-dev.off()
+#dev.off()
 
 
 
@@ -149,7 +163,7 @@ ggplot(seq_depth, aes(x = Dataset, y = total_sequences)) +
         axis.text = element_text(size = 12)) +
   theme_ggside_minimal()
 
-# Check 4 outliers (8160, 8158, 8154, 8268) with insane depth and remove
+# Check 4 outliers (8160, 8158, 8154, 8268) with insane depth (> 150 million reads!) and remove
 d4 <- d %>%
   filter(sampleID %in% c("8160", "8158", "8154", "8268"))
 # 3 grassland and 1 woodland
@@ -175,20 +189,22 @@ ggplot(seq_depth, aes(x = Dataset, y = total_sequences)) +
 seq_depth <- seq_depth %>%
   filter(total_sequences > 10000000)
 
-pdf("InitialFigs/BASE_n331_SeqDepth.pdf", width = 7, height = 5)
+#pdf("InitialFigs/BASE_n331_SeqDepth.pdf", width = 7, height = 5)
 ggplot(seq_depth, aes(x = Dataset, y = total_sequences)) +
   geom_boxplot(outlier.shape = NA) +
   geom_jitter(size = 3, width = 0.1, alpha = 0.75) +
   geom_ysidedensity(aes(x = after_stat(density))) +
   labs(x = "Dataset", y = "# Reads") +
-  scale_x_discrete(labels = c("BASE Soil Metagenomes\n0 - 10 cm\nNatural and Conservation Areas\nn = 331")) +
+  scale_x_discrete(
+    labels = c("BASE Soil Metagenomes\n0 - 10 cm\nNatural and Conservation Areas\nn = 331")
+    ) +
   scale_y_continuous(labels = label_comma()) +
   theme_bw() +
   theme(axis.title.y = element_text(size = 14),
         axis.text = element_text(size = 12),
         axis.title.x = element_blank()) +
   theme_ggside_void()
-dev.off()
+#dev.off()
 
 
 
@@ -238,20 +254,20 @@ table(d_sub$vegetation_type)
 
 coords_trans <- st_as_sf(d_sub, 
                          coords = c('longitude', 'latitude'), 
-                         crs=4326)
+                         crs = 4326)
 ozmap()
 sf_oz <- ozmap("states")
-pdf("InitialFigs/Mapn104.pdf", width = 7, height = 5)
+#pdf("InitialFigs/Mapn104.pdf", width = 7, height = 5)
 ggplot(data = sf_oz) + 
   geom_sf(fill = "grey80", color = "white") +
   geom_sf(data = coords_trans,
           aes(color = AI)) +
   scale_color_gradient(low = "red", high = "blue") +
   theme_minimal()
-dev.off()
+#dev.off()
 
 d_sub$Dataset <- "BASE"
-pdf("InitialFigs/BASE_n104_SeqDepth_AI.pdf", width = 7, height = 5)
+#pdf("InitialFigs/BASE_n104_SeqDepth_AI.pdf", width = 7, height = 5)
 ggplot(d_sub, aes(x = Dataset, y = total_sequences)) +
   geom_boxplot(outlier.shape = NA) +
   geom_jitter(size = 3, width = 0.1, alpha = 0.75, aes(colour = AI)) +
@@ -264,11 +280,11 @@ ggplot(d_sub, aes(x = Dataset, y = total_sequences)) +
   theme(axis.title.y = element_text(size = 14),
         axis.text = element_text(size = 12)) +
   theme_ggside_void()
-dev.off()
+#dev.off()
 
 plot(d_sub$AI)
 hist(d_sub$AI)
-pdf("InitialFigs/BASE_n104_AI.pdf", width = 7, height = 5)
+#pdf("InitialFigs/BASE_n104_AI.pdf", width = 7, height = 5)
 ggplot(d_sub, aes(x = Dataset, y = AI)) +
   geom_boxplot(outlier.shape = NA) +
   geom_jitter(size = 3, width = 0.1, alpha = 0.75) +
@@ -279,7 +295,7 @@ ggplot(d_sub, aes(x = Dataset, y = AI)) +
   theme(axis.title = element_text(size = 14),
         axis.text = element_text(size = 12)) +
   theme_ggside_void()
-dev.off()
+#dev.off()
 
 #write.csv(d_sub, "data/metadata104.csv")
 
@@ -294,10 +310,10 @@ sort(as.numeric(d_sub$sampleID))
 # Your request id is 18, lodged at 2024-09-24T00:36:15.176Z
 # We will be in touch. Please contact am-data-requests@bioplatforms.com for more information.
 
-# Feb 1 24, decided we want all 331 of these! Send sampleID list to Matt Smith
+# Feb 1 2025, decided we want all 331 of these! Send sampleID list to Matt Smith (CSIRO)
 # But since we already have 104, remove those, send list of 227
 table(d$vegetation_type)
 d_227 <- d %>%
   filter(sampleID %notin% d_sub$sampleID) %>%
   dplyr::select(sampleID)
-writexl::write_xlsx(d_227, "~/Desktop/Cliff_BASE_samples227.xlsx")
+#writexl::write_xlsx(d_227, "~/Desktop/Cliff_BASE_samples227.xlsx")
