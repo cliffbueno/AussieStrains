@@ -1,0 +1,87 @@
+# Basic terminal code for different steps in the workflow (Figure 1)
+# All software was installed with conda
+
+# a) Data - downloaded from the BASE portal. For sampleIds, see Table S1.
+
+
+
+# b) mTAGs - identify highly prevalent and highly abundant taxa
+conda activate mtags # Activate mtags conda environment
+
+mtags profile -f $i\_R1p.fastq.gz -r $i\_R2p.fastq.gz -o # Profile
+
+mtags merge -i *bins -o merged_profile # Merge outputs
+
+
+
+# c) Sylph - GTDB highly prevalent and abundant genera genomes
+conda activate sylph # Activate sylph conda environment
+
+sylph sketch -g /scratch/alpine/clbd1748/Australia_copy/PrevAbund/*.fna.gz -o /scratch/alpine/clbd1748/Australia_copy/Sylph/Brady915_sketch -t 8 # Sketch genomes
+
+sylph sketch -1 /scratch/alpine/clbd1748/Australia_copy/QC_reads/*R1p.fastq.gz -2 /scratch/alpine/clbd1748/Australia_copy/QC_reads/*R2p.fastq.gz -d /scratch/alpine/clbd1748/Australia_copy/reads_sketch331 -t 16 # Sketch reads
+
+sylph profile /scratch/alpine/clbd1748/Australia_copy/Sylph/Brady915_sketch.syldb /scratch/alpine/clbd1748/Australia_copy/reads_sketch331/*.sylsp -t 8 -m 95 > /scratch/alpine/clbd1748/Australia_copy/Sylph/sylph_profile_brady915_n331.tsv # Profile
+
+
+
+# d) CoverM - calculate mean coverage and coverage histogram of reference genome
+conda activate coverm # Activate coverm conda environment
+
+for i in `ls -1 /scratch/alpine/clbd1748/Australia/QC_reads/*_R1p.fastq.gz | sed 's/_R1p.fastq.gz//'`
+do
+coverm genome -c $i\_R1p.fastq.gz $i\_R2p.fastq.gz -d /scratch/alpine/clbd1748/Australia/top4 -x gz -m mean -o $i\_.tsv --output-format dense -t 16
+done # Mean coverage
+
+for i in `ls -1 /scratch/alpine/clbd1748/Australia/QC_reads/*_R1p.fastq.gz | sed 's/_R1p.fastq.gz//'`
+do
+coverm genome -c $i\_R1p.fastq.gz $i\_R2p.fastq.gz -d /scratch/alpine/clbd1748/Australia/top4 -x gz -m coverage_histogram -o $i\_.tsv --output-format dense -t 16
+done # Coverage histogram
+
+
+
+# e) StrainFinder - run on KBase. See narrative 196529
+
+
+
+# f) GenomeQC - filter based on checkM completeness and contaimination, and bac120
+conda activate checkm # Activate checkm conda environment
+
+checkm lineage_wf -t 8 -x fna /scratch/alpine/clbd1748/Australia_copy/Strains /scratch/alpine/clbd1748/Australia_copy/checkm # GTDB genomes already have checkm, but run for the new StrainFinder strains
+
+conda activate gtdbtk # Activate gtdbtk conda environment
+
+gtdbtk identify --genome_dir /scratch/alpine/clbd1748/Australia_copy/Brady915 --out_dir /scratch/alpine/clbd1748/Australia_copy/Brady915_Tree/identify_output --cpus 16 --extension gz --tmpdir /scratch/alpine/clbd1748/Australia_copy/gtdb_tmp # Identify bac12
+
+
+
+# g) Sylph - Bradyrhizobium (GTDB + Strainfinder genomes)
+conda activate sylph # Activate sylph conda environment
+
+sylph sketch -g /scratch/alpine/clbd1748/Australia_copy/Brady915/*.fna.gz -o /scratch/alpine/clbd1748/Australia_copy/Sylph/Brady915_sketch -t 8 # Sketch genomes
+
+sylph sketch -1 /scratch/alpine/clbd1748/Australia_copy/QC_reads/*R1p.fastq.gz -2 /scratch/alpine/clbd1748/Australia_copy/QC_reads/*R2p.fastq.gz -d /scratch/alpine/clbd1748/Australia_copy/reads_sketch331 -t 16 # Sketch reads
+
+sylph profile /scratch/alpine/clbd1748/Australia_copy/Sylph/Brady915_sketch.syldb /scratch/alpine/clbd1748/Australia_copy/reads_sketch331/*.sylsp -t 8 -m 95 > /scratch/alpine/clbd1748/Australia_copy/Sylph/sylph_profile_brady915_n331.tsv # Profile
+
+
+
+# h) Phylogenetic analysis
+conda activate gtdbtk # Activate gtdbtk conda environment
+
+gtdbtk identify --genome_dir /scratch/alpine/clbd1748/Australia_copy/Brady915 --out_dir /scratch/alpine/clbd1748/Australia_copy/Brady915_Tree/identify_output --cpus 16 --extension gz --tmpdir /scratch/alpine/clbd1748/Australia_copy/gtdb_tmp # Identify bac120
+
+gtdbtk align --identify_dir /scratch/alpine/clbd1748/Australia_copy/Brady915_Tree/identify_output/ --out_dir /scratch/alpine/clbd1748/Australia_copy/Brady915_Tree/align_output_nogap --cpus 16 --skip_gtdb_refs --tmpdir /scratch/alpine/clbd1748/Australia_copy/gtdb_tmp --custom_msa_filters --cols_per_gene 2000 --min_consensus 25 --max_consensus 95 --min_perc_taxa 99 # Align bac120
+
+conda activate fasttree # Activate fasttree conda environment
+
+FastTree -gamma -lg /scratch/alpine/clbd1748/Australia_copy/Brady915_Tree/align_output_nogap/align/gtdbtk.bac120.user_msa.fasta > brady915_fasttree_nogap.tree
+
+
+
+# i) Ecological analysis - done in R. See R script on Zenodo.
+
+
+
+# j) Pangenomic analysis - use anvi'o 8
+Follow the general workflow here https://merenlab.org/2016/11/08/pangenomics-v2/
